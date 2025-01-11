@@ -39,7 +39,9 @@ aatype_to_seq = lambda aatype: ''.join([
 
 class CPU_Unpickler(pickle.Unpickler):
     """Pytorch pickle loading workaround.
+    Purpose: A subclass of pickle.Unpickler to load PyTorch tensors onto CPU directly.
 
+    Overrides: The find_class method to handle PyTorch's storage tensors.
     https://github.com/pytorch/pytorch/issues/16797
     """
     def find_class(self, module, name):
@@ -49,11 +51,35 @@ class CPU_Unpickler(pickle.Unpickler):
 
 
 def create_rigid(rots, trans):
+    """
+    Purpose: Creates a rigid body transformation from rotation matrices and translations.
+
+    Parameters:
+
+    rots: Rotation matrices.
+
+    trans: Translation vectors.
+
+    Returns: A Rigid object representing the transformation.
+    """
     rots = ru.Rotation(rot_mats=rots)
     return Rigid(rots=rots, trans=trans)
 
 
 def batch_align_structures(pos_1, pos_2, mask=None):
+    """
+    Purpose: Aligns multiple structures in a batch.
+
+    Parameters:
+
+    pos_1: Positions of the first set of structures.
+
+    pos_2: Positions of the second set of structures.
+
+    mask: Optional mask to apply.
+
+    Returns: Aligned positions of pos_1, original pos_2, and alignment rotations.
+    """
     if pos_1.shape != pos_2.shape:
         raise ValueError('pos_1 and pos_2 must have the same shape.')
     if pos_1.ndim != 3:
@@ -105,6 +131,8 @@ def adjust_oxygen_pos(
         atom_37 (torch.Tensor): (N, 37, 3) tensor of positions of the backbone atoms in atom_37 ordering
                                 which is ['N', 'CA', 'C', 'CB', 'O', ...]
         pos_is_known (torch.Tensor): (N,) mask for known residues.
+
+    Returns: Adjusted atom_37 tensor.
     """
 
     N = atom_37.shape[0]
@@ -172,7 +200,19 @@ def adjust_oxygen_pos(
 
 def write_pkl(
         save_path: str, pkl_data: Any, create_dir: bool = False, use_torch=False):
-    """Serialize data into a pickle file."""
+    """
+    Purpose: Writes data to a pickle file.
+
+    Parameters:
+
+    save_path: Path to save the pickle file.
+
+    pkl_data: Data to serialize.
+
+    create_dir: Whether to create directories if they don't exist.
+
+    use_torch: Whether to use PyTorch's save function.
+    """
     if create_dir:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
     if use_torch:
@@ -183,7 +223,19 @@ def write_pkl(
 
 
 def read_pkl(read_path: str, verbose=True, use_torch=False, map_location=None):
-    """Read data from a pickle file."""
+    """
+    Purpose: Reads data from a pickle file, handling PyTorch tensors.
+
+    Parameters:
+
+    read_path: Path to the pickle file.
+
+    verbose: Whether to print error messages.
+
+    use_torch: Whether to use PyTorch's load function.
+
+    map_location: Device to load tensors onto.
+    """
     try:
         if use_torch:
             return torch.load(read_path, map_location=map_location)
@@ -201,6 +253,15 @@ def read_pkl(read_path: str, verbose=True, use_torch=False, map_location=None):
 
 
 def chain_str_to_int(chain_str: str):
+    """
+    Purpose: Converts a chain string to an integer representation.
+
+    Parameters:
+
+    chain_str: String representing a chain.
+
+    Returns: Integer representation of the chain string.
+    """
     chain_int = 0
     if len(chain_str) == 1:
         return CHAIN_TO_INT[chain_str]
@@ -210,6 +271,17 @@ def chain_str_to_int(chain_str: str):
 
 
 def parse_chain_feats(chain_feats, scale_factor=1.):
+    """
+    Purpose: Parses and preprocesses chain features.
+
+    Parameters:
+
+    chain_feats: Dictionary of chain features.
+
+    scale_factor: Factor to scale atom positions.
+
+    Returns: Processed chain_feats dictionary.
+    """
     ca_idx = residue_constants.atom_order['CA']
     chain_feats['bb_mask'] = chain_feats['atom_mask'][:, ca_idx]
     bb_pos = chain_feats['atom_positions'][:, ca_idx]

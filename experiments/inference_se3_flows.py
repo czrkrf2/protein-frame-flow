@@ -20,10 +20,14 @@ log = eu.get_pylogger(__name__)
 class EvalRunner:
 
     def __init__(self, cfg: DictConfig):
-        """Initialize sampler.
+        """Initialize the evaluation runner.
 
         Args:
-            cfg: inference config.
+            cfg: Configuration for inference.
+
+        This class handles the setup and execution of the evaluation process.
+        It loads the checkpoint configuration, merges it with the inference configuration,
+        and prepares the output directory.
         """
         ckpt_path = cfg.inference.ckpt_path
         ckpt_dir = os.path.dirname(ckpt_path)
@@ -62,9 +66,18 @@ class EvalRunner:
 
     @property
     def inference_dir(self):
+        """Get the inference directory path."""
         return self._flow_module.inference_dir
 
     def setup_inference_dir(self, ckpt_path):
+        """Set up the directory for inference outputs.
+
+        Args:
+            ckpt_path: Path to the checkpoint file.
+
+        Returns:
+            The path to the inference directory.
+        """
         self._ckpt_name = '/'.join(ckpt_path.replace('.ckpt', '').split('/')[-3:])
         output_dir = os.path.join(
             self._infer_cfg.predict_dir,
@@ -77,6 +90,7 @@ class EvalRunner:
         return output_dir
 
     def run_sampling(self):
+        """Run the sampling process for the evaluation task."""
         devices = GPUtil.getAvailable(
             order='memory', limit = 8)[:self._infer_cfg.num_gpus]
         log.info(f"Using devices: {devices}")
@@ -100,7 +114,14 @@ class EvalRunner:
 @hydra.main(version_base=None, config_path="../configs", config_name="inference_unconditional")
 def run(cfg: DictConfig) -> None:
 
-    # Read model checkpoint.
+    """Main function to run the evaluation process.
+
+    Args:
+        cfg: Configuration for inference.
+
+    This function initializes the evaluation runner, starts the timer,
+    runs the sampling process, and logs the elapsed time.
+    """
     log.info(f'Starting inference with {cfg.inference.num_gpus} GPUs')
     start_time = time.time()
     sampler = EvalRunner(cfg)

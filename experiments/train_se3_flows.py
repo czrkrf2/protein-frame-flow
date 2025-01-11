@@ -14,28 +14,41 @@ from models.flow_module import FlowModule
 from experiments import utils as eu
 import wandb
 
+# Get a logger for logging information
 log = eu.get_pylogger(__name__)
+# Set PyTorch float32 matmul precision to high
 torch.set_float32_matmul_precision('high')
 
 
 class Experiment:
 
     def __init__(self, *, cfg: DictConfig):
+        """
+        Initialize the Experiment class with a configuration.
+        
+        Parameters:
+            cfg (DictConfig): Configuration object containing experiment settings.
+        """
         self._cfg = cfg
         self._data_cfg = cfg.data
         self._exp_cfg = cfg.experiment
         self._task = self._data_cfg.task
         self._setup_dataset()
+        # Initialize LightningDataModule for protein data handling
         self._datamodule: LightningDataModule = ProteinData(
             data_cfg=self._data_cfg,
             train_dataset=self._train_dataset,
             valid_dataset=self._valid_dataset
         )
+        # Initialize the model module
         self._train_device_ids = eu.get_available_device(self._exp_cfg.num_devices)
         log.info(f"Training with devices: {self._train_device_ids}")
         self._module: LightningModule = FlowModule(self._cfg)
 
     def _setup_dataset(self):
+        """
+        Setup the train and validation datasets based on the configuration.
+        """
         if self._data_cfg.dataset == 'scope':
             self._train_dataset, self._valid_dataset = eu.dataset_creation(
                 ScopeDataset, self._cfg.scope_dataset, self._task)
@@ -46,6 +59,9 @@ class Experiment:
             raise ValueError(f'Unrecognized dataset {self._data_cfg.dataset}') 
         
     def train(self):
+        """
+        Setup trainer and start training the model.
+        """
         callbacks = []
         if self._exp_cfg.debug:
             log.info("Debug mode.")
@@ -84,6 +100,7 @@ class Experiment:
             enable_model_summary=True,
             devices=self._train_device_ids,
         )
+        # Start training
         trainer.fit(
             model=self._module,
             datamodule=self._datamodule,
@@ -93,7 +110,12 @@ class Experiment:
 
 @hydra.main(version_base=None, config_path="../configs", config_name="base.yaml")
 def main(cfg: DictConfig):
-
+    """
+    Main function to initialize and run the experiment.
+    
+    Parameters:
+        cfg (DictConfig): Configuration object loaded from hydra.
+    """
     if cfg.experiment.warm_start is not None and cfg.experiment.warm_start_cfg_override:
         # Loads warm start config.
         warm_start_cfg_path = os.path.join(
@@ -107,7 +129,7 @@ def main(cfg: DictConfig):
         cfg.model = OmegaConf.merge(cfg.model, warm_start_cfg.model)
         OmegaConf.set_struct(cfg.model, True)
         log.info(f'Loaded warm start config from {warm_start_cfg_path}')
-
+    # Create and run the experiment
     exp = Experiment(cfg=cfg)
     exp.train()
 

@@ -23,7 +23,12 @@ from pytorch_lightning.loggers.wandb import WandbLogger
 
 
 class FlowModule(LightningModule):
-
+    """
+    LightningModule for the FlowModel used in protein backbone generation.
+    
+    Parameters:
+    - cfg: Configuration object containing experiment, model, data, and interpolant configurations.
+    """
     def __init__(self, cfg):
         super().__init__()
         self._print_logger = logging.getLogger(__name__)
@@ -47,6 +52,12 @@ class FlowModule(LightningModule):
 
     @property
     def checkpoint_dir(self):
+        """
+        Gets the checkpoint directory path, ensuring it's the same across distributed processes.
+        
+        Returns:
+        - checkpoint_dir: Path to the checkpoint directory.
+        """
         if self._checkpoint_dir is None:
             if dist.is_initialized():
                 if dist.get_rank() == 0:
@@ -63,6 +74,12 @@ class FlowModule(LightningModule):
 
     @property
     def inference_dir(self):
+        """
+        Gets the inference directory path, ensuring it's the same across distributed processes.
+        
+        Returns:
+        - inference_dir: Path to the inference directory.
+        """
         if self._inference_dir is None:
             if dist.is_initialized():
                 if dist.get_rank() == 0:
@@ -78,9 +95,15 @@ class FlowModule(LightningModule):
         return self._inference_dir
 
     def on_train_start(self):
+        """
+        Logs the start time of training.
+        """
         self._epoch_start_time = time.time()
         
     def on_train_epoch_end(self):
+        """
+        Logs the time taken for each training epoch.
+        """
         epoch_time = (time.time() - self._epoch_start_time) / 60.0
         self.log(
             'train/epoch_time_minutes',
@@ -92,6 +115,15 @@ class FlowModule(LightningModule):
         self._epoch_start_time = time.time()
 
     def model_step(self, noisy_batch: Any):
+        """
+        Computes the loss for a given noisy batch during training.
+        
+        Parameters:
+        - noisy_batch: Dictionary containing noisy batch data.
+        
+        Returns:
+        - batch_losses: Dictionary containing computed losses.
+        """
         training_cfg = self._exp_cfg.training
         loss_mask = noisy_batch['res_mask'] * noisy_batch['diffuse_mask']
         if torch.any(torch.sum(loss_mask, dim=-1) < 1):
@@ -194,6 +226,13 @@ class FlowModule(LightningModule):
         }
 
     def validation_step(self, batch: Any, batch_idx: int):
+        """
+        Performs validation step: sampling and metric calculation.
+        
+        Parameters:
+        - batch: Validation batch data.
+        - batch_idx: Index of the batch.
+        """
         res_mask = batch['res_mask']
         self.interpolant.set_device(res_mask.device)
         num_batch, num_res = res_mask.shape
@@ -239,6 +278,9 @@ class FlowModule(LightningModule):
         self.validation_epoch_metrics.append(batch_metrics)
         
     def on_validation_epoch_end(self):
+        """
+        Aggregates validation metrics and logs them.
+        """
         if len(self.validation_epoch_samples) > 0:
             self.logger.log_table(
                 key='valid/samples',
@@ -268,6 +310,14 @@ class FlowModule(LightningModule):
             sync_dist=False,
             rank_zero_only=True
         ):
+        """
+        Logs a scalar value with specified parameters.
+        
+        Parameters:
+        - key: Name of the scalar to log.
+        - value: Value to log.
+        - on_step, on_epoch, prog_bar, batch_size, sync_dist, rank_zero_only: Logging parameters.
+        """
         if sync_dist and rank_zero_only:
             raise ValueError('Unable to sync dist when rank_zero_only=True')
         self.log(
@@ -282,6 +332,16 @@ class FlowModule(LightningModule):
         )
 
     def training_step(self, batch: Any, stage: int):
+        """
+        Performs the training step: corruption, loss computation, and logging.
+        
+        Parameters:
+        - batch: Training batch data.
+        - stage: Current training stage.
+        
+        Returns:
+        - train_loss: Computed training loss.
+        """
         step_start_time = time.time()
         self.interpolant.set_device(batch['res_mask'].device)
         noisy_batch = self.interpolant.corrupt_batch(batch)
@@ -346,12 +406,25 @@ class FlowModule(LightningModule):
         return train_loss
 
     def configure_optimizers(self):
+        """
+        Configures the optimizer for training.
+        
+        Returns:
+        - optimizer: AdamW optimizer.
+        """
         return torch.optim.AdamW(
             params=self.model.parameters(),
             **self._exp_cfg.optimizer
         )
 
     def predict_step(self, batch, batch_idx):
+        """
+        Performs prediction step: sampling and saving generated backbones.
+        
+        Parameters:
+        - batch: Prediction batch data.
+        - batch_idx: Index of the batch.
+        """
         del batch_idx # Unused
         device = f'cuda:{torch.cuda.current_device()}'
         interpolant = Interpolant(self._infer_cfg.interpolant) 

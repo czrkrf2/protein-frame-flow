@@ -5,7 +5,7 @@ defaults:
 
 inference:
   task: unconditional
-  ckpt_path: weights/pdb/published.ckpt
+  ckpt_path: ckpt/se3-fm/hallucination_pdb/2025-01-04_16-01-37/last.ckpt
 
   samples:
     length_subset: [70, 100, 200, 300]

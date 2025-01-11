@@ -13,8 +13,19 @@ from openfold.utils import rigid_utils
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 
-
+# Utility function to filter data based on radius of gyration quantile
 def _rog_filter(df, quantile):
+    """
+    Filters the dataframe based on the radius of gyration quantile for each sequence length.
+    
+    Parameters:
+    - df: pandas DataFrame containing the data.
+    - quantile: float, the quantile level to calculate the cutoff.
+    
+    Returns:
+    - Filtered pandas DataFrame.
+    """
+    # Calculate quantile of radius_gyration for each sequence length
     y_quant = pd.pivot_table(
         df,
         values='radius_gyration', 
@@ -36,11 +47,23 @@ def _rog_filter(df, quantile):
     # Add a little more.
     pred_y = poly_reg_model.predict(pred_poly_features) + 0.1
 
+    # Apply the cutoff filter to the dataframe
     row_rog_cutoffs = df.modeled_seq_len.map(lambda x: pred_y[x-1])
     return df[df.radius_gyration < row_rog_cutoffs]
 
-
+# Function to filter data based on sequence length
 def _length_filter(data_csv, min_res, max_res):
+    """
+    Filters the dataframe based on the sequence length.
+    
+    Parameters:
+    - data_csv: pandas DataFrame containing the data.
+    - min_res: int, minimum sequence length.
+    - max_res: int, maximum sequence length.
+    
+    Returns:
+    - Filtered pandas DataFrame.
+    """
     return data_csv[
         (data_csv.modeled_seq_len >= min_res)
         & (data_csv.modeled_seq_len <= max_res)
@@ -48,14 +71,43 @@ def _length_filter(data_csv, min_res, max_res):
 
 
 def _plddt_percent_filter(data_csv, min_plddt_percent):
+    """
+    Filters the dataframe based on the percentage of residues with pLDDT above a threshold.
+    
+    Parameters:
+    - data_csv: pandas DataFrame containing the data.
+    - min_plddt_percent: float, minimum percentage of confident pLDDT residues.
+    
+    Returns:
+    - Filtered pandas DataFrame.
+    """
     return data_csv[data_csv.num_confident_plddt > min_plddt_percent]
 
 
 def _max_coil_filter(data_csv, max_coil_percent):
+    """
+    Filters the dataframe based on the maximum percentage of coil residues.
+    
+    Parameters:
+    - data_csv: pandas DataFrame containing the data.
+    - max_coil_percent: float, maximum percentage of coil residues allowed.
+    
+    Returns:
+    - Filtered pandas DataFrame.
+    """
     return data_csv[data_csv.coil_percent <= max_coil_percent]
 
 
 def _process_csv_row(processed_file_path):
+    """
+    Processes a CSV row by reading and parsing the data from the processed file path.
+    
+    Parameters:
+    - processed_file_path: str, path to the processed data file.
+    
+    Returns:
+    - Dictionary containing the processed features.
+    """
     processed_feats = du.read_pkl(processed_file_path)
     processed_feats = du.parse_chain_feats(processed_feats)
 
@@ -111,11 +163,27 @@ def _process_csv_row(processed_file_path):
 
 
 def _add_plddt_mask(feats, plddt_threshold):
+    """
+    Adds a pLDDT mask to the features dictionary.
+    
+    Parameters:
+    - feats: dict, features dictionary.
+    - plddt_threshold: float, threshold for confident pLDDT residues.
+    """
     feats['plddt_mask'] = torch.tensor(
         feats['res_plddt'] > plddt_threshold).int()
 
 
 def _read_clusters(cluster_path):
+    """
+    Reads cluster assignments from a file and maps PDBs to clusters.
+    
+    Parameters:
+    - cluster_path: str, path to the cluster file.
+    
+    Returns:
+    - Dictionary mapping PDB names to cluster indices.
+    """
     pdb_to_cluster = {}
     with open(cluster_path, "r") as f:
         for i,line in enumerate(f):
@@ -126,6 +194,14 @@ def _read_clusters(cluster_path):
 
 
 class BaseDataset(Dataset):
+    """
+    Base class for datasets.
+    
+    Parameters:
+    - dataset_cfg: Configuration for the dataset.
+    - is_training: bool, whether it's a training dataset.
+    - task: str, the task type (e.g., 'hallucination', 'inpainting').
+    """
     def __init__(
             self,
             *,
@@ -147,20 +223,30 @@ class BaseDataset(Dataset):
 
     @property
     def is_training(self):
+        """Returns whether the dataset is for training."""
         return self._is_training
 
     @property
     def dataset_cfg(self):
+        """Returns the dataset configuration."""
         return self._dataset_cfg
     
     def __len__(self):
+        """Returns the number of examples in the dataset."""
         return len(self.csv)
 
     @abc.abstractmethod
     def _filter_metadata(self, raw_csv: pd.DataFrame) -> pd.DataFrame:
+        """Abstract method to filter metadata."""
         pass
 
     def _create_split(self, data_csv):
+        """
+        Creates training or validation split based on configuration.
+        
+        Parameters:
+        - data_csv: pandas DataFrame containing the data.
+        """
         # Training or validation specific logic.
         if self.is_training:
             self.csv = data_csv
@@ -193,6 +279,15 @@ class BaseDataset(Dataset):
         self.csv['index'] = list(range(len(self.csv)))
 
     def process_csv_row(self, csv_row):
+        """
+        Processes a CSV row to extract features.
+        
+        Parameters:
+        - csv_row: pandas Series, a row from the CSV.
+        
+        Returns:
+        - Dictionary containing the processed features.
+        """
         path = csv_row['processed_path']
         seq_len = csv_row['modeled_seq_len']
         # Large protein files are slow to read. Cache them.
@@ -205,6 +300,16 @@ class BaseDataset(Dataset):
         return processed_row
     
     def _sample_scaffold_mask(self, batch, rng):
+        """
+        Samples a scaffold mask for inpainting tasks.
+        
+        Parameters:
+        - batch: dict, batch of features.
+        - rng: numpy random generator.
+        
+        Returns:
+        - Scaffold mask tensor.
+        """
         trans_1 = batch['trans_1']
         num_res = trans_1.shape[0]
         min_motif_size = int(self._dataset_cfg.min_motif_percent * num_res)
@@ -256,6 +361,13 @@ class BaseDataset(Dataset):
         return scaffold_mask * batch['res_mask']
     
     def setup_inpainting(self, feats, rng):
+        """
+        Sets up inpainting by sampling a scaffold mask.
+        
+        Parameters:
+        - feats: dict, features dictionary.
+        - rng: numpy random generator.
+        """
         diffuse_mask = self._sample_scaffold_mask(feats, rng)
         if 'plddt_mask' in feats:
             diffuse_mask = diffuse_mask * feats['plddt_mask']
@@ -265,6 +377,15 @@ class BaseDataset(Dataset):
         feats['diffuse_mask'] = diffuse_mask
 
     def __getitem__(self, row_idx):
+        """
+        Retrieves an item from the dataset.
+        
+        Parameters:
+        - row_idx: int, index of the row to retrieve.
+        
+        Returns:
+        - Dictionary containing the features for the example.
+        """
         # Process data example.
         csv_row = self.csv.iloc[row_idx]
         feats = self.process_csv_row(csv_row)
@@ -299,8 +420,19 @@ class BaseDataset(Dataset):
 
 
 class ScopeDataset(BaseDataset):
-
+    """
+    Dataset class for the SCOPe dataset.
+    """
     def _filter_metadata(self, raw_csv):
+        """
+        Filters metadata for the SCOPe dataset.
+        
+        Parameters:
+        - raw_csv: pandas DataFrame containing the raw data.
+        
+        Returns:
+        - Filtered pandas DataFrame.
+        """
         filter_cfg = self.dataset_cfg.filter
         data_csv = _length_filter(
             raw_csv,
@@ -312,7 +444,9 @@ class ScopeDataset(BaseDataset):
 
 
 class PdbDataset(BaseDataset):
-
+    """
+    Dataset class for the PDB dataset.
+    """
     def __init__(
             self,
             *,
@@ -320,6 +454,14 @@ class PdbDataset(BaseDataset):
             is_training,
             task,
         ):
+        """
+        Initializes the PDB dataset.
+        
+        Parameters:
+        - dataset_cfg: Configuration for the dataset.
+        - is_training: bool, whether it's a training dataset.
+        - task: str, the task type.
+        """
         self._log = logging.getLogger(__name__)
         self._is_training = is_training
         self._dataset_cfg = dataset_cfg
@@ -350,7 +492,15 @@ class PdbDataset(BaseDataset):
         self._num_clusters = len(self._all_clusters)
 
     def _filter_metadata(self, raw_csv):
-        """Filter metadata."""
+        """
+        Filters metadata for the PDB dataset.
+        
+        Parameters:
+        - raw_csv: pandas DataFrame containing the raw data.
+        
+        Returns:
+        - Filtered pandas DataFrame.
+        """
         filter_cfg = self.dataset_cfg.filter
         data_csv = raw_csv[
             raw_csv.oligomeric_detail.isin(filter_cfg.oligomeric)]

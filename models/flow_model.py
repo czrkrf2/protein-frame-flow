@@ -9,21 +9,34 @@ from data import utils as du
 
 
 class FlowModel(nn.Module):
+    """
+    FlowModel class for SE(3) flow matching in protein backbone generation.
 
+    This class encapsulates the neural network architecture used to predict
+    the clean frames (translations and rotations) given corrupted frames at
+    different timesteps during training.
+
+    Parameters:
+        model_conf: Configuration object containing model hyperparameters.
+    """
     def __init__(self, model_conf):
         super(FlowModel, self).__init__()
         self._model_conf = model_conf
         self._ipa_conf = model_conf.ipa
+        # Lambda functions to convert rigids between angstrom and nanometers
         self.rigids_ang_to_nm = lambda x: x.apply_trans_fn(lambda x: x * du.ANG_TO_NM_SCALE)
         self.rigids_nm_to_ang = lambda x: x.apply_trans_fn(lambda x: x * du.NM_TO_ANG_SCALE) 
+        # Initialize node and edge feature networks
         self.node_feature_net = NodeFeatureNet(model_conf.node_features)
         self.edge_feature_net = EdgeFeatureNet(model_conf.edge_features)
 
         # Attention trunk
         self.trunk = nn.ModuleDict()
         for b in range(self._ipa_conf.num_blocks):
+            # Invariant Point Attention block
             self.trunk[f'ipa_{b}'] = ipa_pytorch.InvariantPointAttention(self._ipa_conf)
             self.trunk[f'ipa_ln_{b}'] = nn.LayerNorm(self._ipa_conf.c_s)
+            # Transformer encoder layer
             tfmr_in = self._ipa_conf.c_s
             tfmr_layer = torch.nn.TransformerEncoderLayer(
                 d_model=tfmr_in,
@@ -37,6 +50,7 @@ class FlowModel(nn.Module):
                 tfmr_layer, self._ipa_conf.seq_tfmr_num_layers, enable_nested_tensor=False)
             self.trunk[f'post_tfmr_{b}'] = ipa_pytorch.Linear(
                 tfmr_in, self._ipa_conf.c_s, init="final")
+            # Node transition and backbone update modules
             self.trunk[f'node_transition_{b}'] = ipa_pytorch.StructureModuleTransition(
                 c=self._ipa_conf.c_s)
             self.trunk[f'bb_update_{b}'] = ipa_pytorch.BackboneUpdate(
@@ -52,6 +66,26 @@ class FlowModel(nn.Module):
                 )
 
     def forward(self, input_feats):
+        """
+        Forward pass of the FlowModel.
+
+        Parameters:
+            input_feats: Dictionary containing input features:
+                - 'res_mask': Residue mask.
+                - 'diffuse_mask': Diffusion mask.
+                - 'res_idx': Residue indices.
+                - 'so3_t': SO3 transformation tensors.
+                - 'r3_t': R3 transformation tensors.
+                - 'trans_t': Translation tensors.
+                - 'rotmats_t': Rotation matrices.
+                - Optional: 'trans_sc' for translation scaling.
+
+        Returns:
+            Dictionary with predicted translations and rotation matrices:
+                - 'pred_trans': Predicted translations.
+                - 'pred_rotmats': Predicted rotation matrices.
+        """
+        # Extract masks and input features
         node_mask = input_feats['res_mask']
         edge_mask = node_mask[:, None] * node_mask[:, :, None]
         diffuse_mask = input_feats['diffuse_mask']
@@ -86,9 +120,13 @@ class FlowModel(nn.Module):
 
         # Main trunk
         curr_rigids = self.rigids_ang_to_nm(curr_rigids)
+
+        # Prepare node embeddings
         init_node_embed = init_node_embed * node_mask[..., None]
         node_embed = init_node_embed * node_mask[..., None]
         edge_embed = init_edge_embed * edge_mask[..., None]
+
+        # Process through trunk blocks
         for b in range(self._ipa_conf.num_blocks):
             ipa_embed = self.trunk[f'ipa_{b}'](
                 node_embed,
@@ -111,6 +149,7 @@ class FlowModel(nn.Module):
                     node_embed, edge_embed)
                 edge_embed *= edge_mask[..., None]
 
+        # Convert rigids back to angstrom and extract predictions
         curr_rigids = self.rigids_nm_to_ang(curr_rigids)
         pred_trans = curr_rigids.get_trans()
         pred_rotmats = curr_rigids.get_rots().get_rot_mats()

@@ -4,8 +4,18 @@ from models.utils import get_index_embedding, get_time_embedding
 
 
 class NodeFeatureNet(nn.Module):
-
+    """
+    NodeFeatureNet is a neural network module designed to process node features 
+    in a graph, incorporating positional embeddings, time embeddings, and other 
+    relevant features.
+    """
     def __init__(self, module_cfg):
+        """
+        Initialize the NodeFeatureNet with the given configuration.
+        
+        Parameters:
+            module_cfg: Configuration object containing hyperparameters.
+        """
         super(NodeFeatureNet, self).__init__()
         self._cfg = module_cfg
         self.c_s = self._cfg.c_s
@@ -17,6 +27,17 @@ class NodeFeatureNet(nn.Module):
         self.linear = nn.Linear(embed_size, self.c_s)
 
     def embed_t(self, timesteps, mask):
+        """
+        Embed the timesteps into a higher-dimensional space and repeat them 
+        for each residue in the sequence.
+        
+        Parameters:
+            timesteps: Tensor of timesteps, shape [batch_size].
+            mask: Residue mask tensor, shape [batch_size, num_residues].
+        
+        Returns:
+            Tensor of time embeddings, shape [batch_size, num_residues, c_timestep_emb].
+        """
         timestep_emb = get_time_embedding(
             timesteps[:, 0],
             self.c_timestep_emb,
@@ -25,6 +46,19 @@ class NodeFeatureNet(nn.Module):
         return timestep_emb * mask.unsqueeze(-1)
 
     def forward(self, so3_t, r3_t, res_mask, diffuse_mask, pos):
+        """
+        Forward pass to compute node features from input embeddings and masks.
+        
+        Parameters:
+            so3_t: Tensor of SO3 timesteps, shape [batch_size, num_residues].
+            r3_t: Tensor of R3 timesteps, shape [batch_size, num_residues].
+            res_mask: Residue mask tensor, shape [batch_size, num_residues].
+            diffuse_mask: Diffusion mask tensor, shape [batch_size, num_residues].
+            pos: Position indices tensor, shape [batch_size, num_residues].
+        
+        Returns:
+            Tensor of node features, shape [batch_size, num_residues, c_s].
+        """
         # s: [b]
 
         b, num_res, device = res_mask.shape[0], res_mask.shape[1], res_mask.device

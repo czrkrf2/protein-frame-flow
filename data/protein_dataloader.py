@@ -8,7 +8,15 @@ from torch.utils.data.distributed import DistributedSampler, dist
 
 
 class ProteinData(LightningDataModule):
+    """
+    Data module for protein datasets using PyTorch Lightning.
 
+    Parameters:
+    - data_cfg: Configuration for data loading.
+    - train_dataset: Training dataset.
+    - valid_dataset: Validation dataset.
+    - predict_dataset: Prediction dataset (optional).
+    """
     def __init__(self, *, data_cfg, train_dataset, valid_dataset, predict_dataset=None):
         super().__init__()
         self.data_cfg = data_cfg
@@ -19,6 +27,16 @@ class ProteinData(LightningDataModule):
         self._predict_dataset = predict_dataset
 
     def train_dataloader(self, rank=None, num_replicas=None):
+        """
+        Returns a DataLoader for the training dataset.
+
+        Parameters:
+        - rank: Rank of the current process (for distributed training).
+        - num_replicas: Total number of processes (for distributed training).
+
+        Returns:
+        - DataLoader: Loader for training data.
+        """
         num_workers = self.loader_cfg.num_workers
         return DataLoader(
             self._train_dataset,
@@ -35,6 +53,12 @@ class ProteinData(LightningDataModule):
         )
 
     def val_dataloader(self):
+        """
+        Returns a DataLoader for the validation dataset.
+
+        Returns:
+        - DataLoader: Loader for validation data.
+        """
         return DataLoader(
             self._valid_dataset,
             sampler=DistributedSampler(self._valid_dataset, shuffle=False),
@@ -44,6 +68,12 @@ class ProteinData(LightningDataModule):
         )
 
     def predict_dataloader(self):
+        """
+        Returns a DataLoader for the prediction dataset.
+
+        Returns:
+        - DataLoader: Loader for prediction data.
+        """
         num_workers = self.loader_cfg.num_workers
         return DataLoader(
             self._predict_dataset,
@@ -55,7 +85,17 @@ class ProteinData(LightningDataModule):
 
 
 class LengthBatcher:
+    """
+    Custom batch sampler that groups proteins of similar lengths into batches.
 
+    Parameters:
+    - sampler_cfg: Configuration for the sampler.
+    - metadata_csv: CSV containing metadata for the dataset.
+    - seed: Random seed for reproducibility.
+    - shuffle: Whether to shuffle the data.
+    - num_replicas: Total number of processes (for distributed training).
+    - rank: Rank of the current process (for distributed training).
+    """
     def __init__(
             self,
             *,
@@ -94,6 +134,15 @@ class LengthBatcher:
         self._log.info(f'Created dataloader rank {self.rank+1} out of {self.num_replicas}')
 
     def _sample_indices(self):
+        """
+        Samples indices from the dataset.
+
+        If 'cluster' is in the CSV, samples one from each cluster.
+        Otherwise, takes all indices.
+
+        Returns:
+        - list: List of sampled indices.
+        """
         if 'cluster' in self._data_csv:
             cluster_sample = self._data_csv.groupby('cluster').sample(
                 1, random_state=self.seed + self.epoch)
@@ -102,6 +151,14 @@ class LengthBatcher:
             return self._data_csv['index'].tolist()
         
     def _replica_epoch_batches(self):
+        """
+        Creates batches for the current replica.
+
+        Handles shuffling and groups proteins by their sequence length.
+
+        Returns:
+        - list: List of batches, each containing indices of proteins.
+        """
         # Make sure all replicas share the same seed on each epoch.
         rng = torch.Generator()
         rng.manual_seed(self.seed + self.epoch)
@@ -136,6 +193,13 @@ class LengthBatcher:
         return sample_order
 
     def _create_batches(self):
+        """
+        Ensures all replicas have the same number of batches.
+
+        Extends the batches and cuts them to _num_batches.
+
+        Sets self.sample_order for iteration.
+        """
         # Make sure all replicas have the same number of batches Otherwise leads to bugs.
         # See bugs with shuffling https://github.com/Lightning-AI/lightning/issues/10947
         all_batches = []
@@ -150,9 +214,23 @@ class LengthBatcher:
         self.sample_order = all_batches
 
     def __iter__(self):
+        """
+        Iterates over the batches.
+
+        Creates batches and increments epoch.
+
+        Returns:
+        - iter: Iterator over batches.
+        """
         self._create_batches()
         self.epoch += 1
         return iter(self.sample_order)
 
     def __len__(self):
+        """
+        Returns the number of batches.
+
+        Returns:
+        - int: Number of batches.
+        """
         return len(self.sample_order)

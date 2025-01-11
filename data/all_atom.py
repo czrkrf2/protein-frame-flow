@@ -29,14 +29,27 @@ Rotation = ru.Rotation
 
 # Residue Constants from OpenFold/AlphaFold2.
 
-
+# Idealized positions for atom14 representation
 IDEALIZED_POS = torch.tensor(residue_constants.restype_atom14_rigid_group_positions)
+# Default frames for each residue type
 DEFAULT_FRAMES = torch.tensor(residue_constants.restype_rigid_group_default_frame)
+# Mask indicating which atoms are present in atom14 representation
 ATOM_MASK = torch.tensor(residue_constants.restype_atom14_mask)
+# Mapping from atom14 to rigid groups
 GROUP_IDX = torch.tensor(residue_constants.restype_atom14_to_rigid_group)
 
 
 def to_atom37(trans, rots):
+    """
+    Converts backbone translations and rotations to atom37 representation.
+    
+    Parameters:
+    - trans: Translation tensors of shape (num_batch, num_res, 3)
+    - rots: Rotation tensors of shape (num_batch, num_res, 3, 3)
+    
+    Returns:
+    - atom37: Tensor of shape (num_batch, num_res, 37, 3) representing all atom positions
+    """
     num_batch, num_res, _ = trans.shape
     final_atom37 = compute_backbone(
         du.create_rigid(rots, trans),
@@ -121,7 +134,18 @@ def torsion_angles_to_frames(
 
 
 def prot_to_torsion_angles(aatype, atom37, atom37_mask):
-    """Calculate torsion angle features from protein features."""
+    """
+    Calculate torsion angle features from protein features.
+    
+    Parameters:
+    - aatype: Amino acid types of shape (..., num_res)
+    - atom37: Atom37 positions of shape (..., num_res, 37, 3)
+    - atom37_mask: Atom37 mask of shape (..., num_res, 37)
+    
+    Returns:
+    - torsion_angles: Sin and cos of torsion angles
+    - torsion_mask: Mask indicating valid torsion angles
+    """
     prot_feats = {
         "aatype": aatype,
         "all_atom_positions": atom37,
@@ -144,7 +168,7 @@ def frames_to_atom14_pos(
         aatype: Residue types. [..., N]
 
     Returns:
-
+        pred_positions: Predicted atom14 positions of shape (..., num_res, 14, 3)
     """
     with torch.no_grad():
         group_mask = GROUP_IDX.to(aatype.device)[aatype, ...]
@@ -169,6 +193,19 @@ def frames_to_atom14_pos(
 
 
 def compute_backbone(bb_rigids, psi_torsions):
+    """
+    Computes backbone atom positions from backbone rigids and psi torsions.
+    
+    Parameters:
+    - bb_rigids: Backbone rigids
+    - psi_torsions: Psi torsion angles of shape (..., num_res, 2)
+    
+    Returns:
+    - atom37_bb_pos: Backbone atom37 positions
+    - atom37_mask: Backbone mask
+    - aatype: Amino acid types
+    - atom14_pos: Atom14 positions
+    """
     torsion_angles = torch.tile(
         psi_torsions[..., None, :], tuple([1 for _ in range(len(bb_rigids.shape))]) + (7, 1)
     )
@@ -237,6 +274,18 @@ def vector_projection(R_ab, P_n):
 
 
 def transrot_to_atom37(transrot_traj, res_mask):
+    """
+    Converts a trajectory of translations and rotations into atom37 representations for protein structures.
+
+    Parameters:
+    - transrot_traj: A list of tuples, where each tuple contains:
+        - trans: A tensor of shape (batch_size, num_residues, 3) representing translations.
+        - rots: A tensor of shape (batch_size, num_residues, 3, 3) representing rotation matrices.
+    - res_mask: A tensor of shape (batch_size, num_residues) indicating which residues are present.
+
+    Returns:
+    - atom37_traj: A list where each element corresponds to a time step in the trajectory. Each element is a tensor of shape (batch_size, num_residues, 37, 3), representing the 3D coordinates of the 37 atoms for each residue in each batch sample.
+    """
     atom37_traj = []
     res_mask = res_mask.detach().cpu()
     num_batch = res_mask.shape[0]
@@ -262,29 +311,51 @@ def transrot_to_atom37(transrot_traj, res_mask):
 
 
 def atom37_from_trans_rot(trans, rots, res_mask = None):
-        if res_mask is None:
-            res_mask = torch.ones([*trans.shape[:-1]], device=trans.device)
-        rigids = du.create_rigid(rots, trans)
-        atom37 = compute_backbone(
-            rigids,
-            torch.zeros(
-                trans.shape[0],
-                trans.shape[1],
-                2,
-                device=trans.device
-            )
-        )[0]
-        atom37 = atom37.to(trans.device)
-        batch_atom37 = []
-        num_batch = res_mask.shape[0]
-        for i in range(num_batch):
-            batch_atom37.append(
-                du.adjust_oxygen_pos(atom37[i], res_mask[i])
-            )
-        return torch.stack(batch_atom37)
+    """
+    Converts translations and rotations to atom37 representation.
+    
+    Parameters:
+    - trans: Translations of shape (num_batch, num_res, 3)
+    - rots: Rotations of shape (num_batch, num_res, 3, 3)
+    - res_mask: Residue mask of shape (num_batch, num_res)
+    
+    Returns:
+    - atom37: Atom37 positions of shape (num_batch, num_res, 37, 3)
+    """
+    if res_mask is None:
+        res_mask = torch.ones([*trans.shape[:-1]], device=trans.device)
+    rigids = du.create_rigid(rots, trans)
+    atom37 = compute_backbone(
+        rigids,
+        torch.zeros(
+            trans.shape[0],
+            trans.shape[1],
+            2,
+            device=trans.device
+        )
+    )[0]
+    atom37 = atom37.to(trans.device)
+    batch_atom37 = []
+    num_batch = res_mask.shape[0]
+    for i in range(num_batch):
+        batch_atom37.append(
+            du.adjust_oxygen_pos(atom37[i], res_mask[i])
+        )
+    return torch.stack(batch_atom37)
 
 
 def process_trans_rot_traj(trans_traj, rots_traj, res_mask):
+    """
+    Processes a trajectory of trans and rots into atom37 representations.
+    
+    Parameters:
+    - trans_traj: List of translations over time
+    - rots_traj: List of rotations over time
+    - res_mask: Residue mask of shape (num_batch, num_res)
+    
+    Returns:
+    - atom37_traj: Atom37 positions over time of shape (num_batch, num_time, num_res, 37, 3)
+    """
     res_mask = res_mask.detach().cpu()
     atom37_traj = [
          atom37_from_trans_rot(trans, rots, res_mask)

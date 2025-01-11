@@ -31,7 +31,27 @@ PDB_MAX_CHAINS = len(PDB_CHAIN_IDS)  # := 62.
 
 @dataclasses.dataclass(frozen=True)
 class Protein:
-  """Protein structure representation."""
+  """
+    Purpose: Represents a protein structure with various attributes.
+
+    Attributes:
+
+    atom_positions: 3D coordinates of atoms.
+
+    aatype: Amino acid types encoded as integers.
+
+    atom_mask: Indicates presence of atoms.
+
+    residue_index: PDB residue indices.
+
+    chain_index: Chain identifiers for each residue.
+
+    b_factors: B-factors for atomic displacements.
+
+    Methods:
+
+    __post_init__: Ensures the number of chains does not exceed PDB limits.
+"""
 
   # Cartesian coordinates of atoms in angstroms. The atom types correspond to
   # residue_constants.atom_types, i.e. the first three are N, CA, CB.
@@ -139,9 +159,24 @@ def from_pdb_string(pdb_str: str, chain_id: Optional[str] = None) -> Protein:
 
 
 def _chain_end(atom_index, end_resname, chain_name, residue_index) -> str:
-  chain_end = 'TER'
-  return (f'{chain_end:<6}{atom_index:>5}      {end_resname:>3} '
-          f'{chain_name:>1}{residue_index:>4}')
+    """
+        Purpose: Generates a TER record for chain termination in PDB format.
+
+        Parameters:
+
+        atom_index: Atom index at the end of the chain.
+
+        end_resname: Residue name at the end of the chain.
+
+        chain_name: Chain identifier.
+
+        residue_index: Residue index.
+
+        Returns: A formatted TER record string.
+    """
+    chain_end = 'TER'
+    return (f'{chain_end:<6}{atom_index:>5}      {end_resname:>3} '
+            f'{chain_name:>1}{residue_index:>4}')
 
 
 def to_pdb(prot: Protein, model=1, add_end=True) -> str:

@@ -26,21 +26,56 @@ from data import all_atom
 
 
 def permute_final_dims(tensor: torch.Tensor, inds: List[int]):
+    """
+    Permutes the final dimensions of a tensor based on the provided indices.
+
+    Parameters:
+        tensor: The input tensor.
+        inds: A list of indices specifying the new order of the final dimensions.
+
+    Returns:
+        The tensor with permuted final dimensions.
+    """
     zero_index = -1 * len(inds)
     first_inds = list(range(len(tensor.shape[:zero_index])))
     return tensor.permute(first_inds + [zero_index + i for i in inds])
 
 
 def flatten_final_dims(t: torch.Tensor, no_dims: int):
+    """
+    Flattens the last 'no_dims' dimensions of a tensor into a single dimension.
+
+    Parameters:
+        t: The input tensor.
+        no_dims: The number of final dimensions to flatten.
+
+    Returns:
+        The tensor with flattened final dimensions.
+    """
     return t.reshape(t.shape[:-no_dims] + (-1,))
 
 
 def ipa_point_weights_init_(weights):
+    """
+    Initializes the weights with a specific value for IPA point attention.
+
+    Parameters:
+        weights: The weight tensor to initialize.
+    """
     with torch.no_grad():
         softplus_inverse_1 = 0.541324854612918
         weights.fill_(softplus_inverse_1)
 
 def _prod(nums):
+    """
+    Calculates the product of a sequence of numbers.
+
+    Parameters:
+        nums: A list or tuple of numbers.
+
+    Returns:
+        The product of the numbers.
+    """
     out = 1
     for n in nums:
         out = out * n
@@ -48,6 +83,16 @@ def _prod(nums):
 
 
 def _calculate_fan(linear_weight_shape, fan="fan_in"):
+    """
+    Calculates the fan-in or fan-out for weight initialization.
+
+    Parameters:
+        linear_weight_shape: The shape of the linear layer weights.
+        fan: Specifies whether to calculate 'fan_in', 'fan_out', or 'fan_avg'.
+
+    Returns:
+        The calculated fan value.
+    """
     fan_out, fan_in = linear_weight_shape
 
     if fan == "fan_in":
@@ -62,6 +107,14 @@ def _calculate_fan(linear_weight_shape, fan="fan_in"):
     return f
 
 def trunc_normal_init_(weights, scale=1.0, fan="fan_in"):
+    """
+    Initializes weights using a truncated normal distribution.
+
+    Parameters:
+        weights: The weight tensor to initialize.
+        scale: The scale factor for the distribution.
+        fan: Specifies the fan type for calculating the standard deviation.
+    """
     shape = weights.shape
     f = _calculate_fan(shape, fan)
     scale = scale / max(1, f)
@@ -76,32 +129,78 @@ def trunc_normal_init_(weights, scale=1.0, fan="fan_in"):
 
 
 def lecun_normal_init_(weights):
+    """
+    Initializes weights using LeCun's initialization.
+
+    Parameters:
+        weights: The weight tensor to initialize.
+    """
     trunc_normal_init_(weights, scale=1.0)
 
 
 def he_normal_init_(weights):
+    """
+    Initializes weights using He's initialization.
+
+    Parameters:
+        weights: The weight tensor to initialize.
+    """
     trunc_normal_init_(weights, scale=2.0)
 
 
 def glorot_uniform_init_(weights):
+    """
+    Initializes weights using Glorot's uniform initialization.
+
+    Parameters:
+        weights: The weight tensor to initialize.
+    """
     nn.init.xavier_uniform_(weights, gain=1)
 
 
 def final_init_(weights):
+    """
+    Initializes weights to zero.
+
+    Parameters:
+        weights: The weight tensor to initialize.
+    """
     with torch.no_grad():
         weights.fill_(0.0)
 
 
 def gating_init_(weights):
+    """
+    Initializes weights for gating mechanisms.
+
+    Parameters:
+        weights: The weight tensor to initialize.
+    """
     with torch.no_grad():
         weights.fill_(0.0)
 
 
 def normal_init_(weights):
+    """
+    Initializes weights using a normal distribution.
+
+    Parameters:
+        weights: The weight tensor to initialize.
+    """
     torch.nn.init.kaiming_normal_(weights, nonlinearity="linear")
 
 
 def compute_angles(ca_pos, pts):
+    """
+    Computes angles between points and backbone vectors.
+
+    Parameters:
+        ca_pos: Positions of C-alpha atoms.
+        pts: Points for which to compute angles.
+
+    Returns:
+        phi_angles: Computed angles.
+    """
     batch_size, num_res, num_heads, num_pts, _ = pts.shape
     calpha_vecs = (ca_pos[:, :, None, :] - ca_pos[:, None, :, :]) + 1e-10
     calpha_vecs = torch.tile(calpha_vecs[:, :, :, None, None, :], (1, 1, 1, num_heads, num_pts, 1))
@@ -115,11 +214,14 @@ def compute_angles(ca_pos, pts):
 
 class Linear(nn.Linear):
     """
-    A Linear layer with built-in nonstandard initializations. Called just
-    like torch.nn.Linear.
+    A Linear layer with built-in nonstandard initializations.
 
-    Implements the initializers in 1.11.4, plus some additional ones found
-    in the code.
+    Parameters:
+        in_dim: Input dimension.
+        out_dim: Output dimension.
+        bias: Whether to include a bias term.
+        init: Initialization method ("default", "relu", "glorot", "gating", "normal", "final").
+        init_fn: Custom initialization function.
     """
 
     def __init__(
@@ -182,6 +284,12 @@ class Linear(nn.Linear):
 
 
 class StructureModuleTransition(nn.Module):
+    """
+    Transition module for updating node embeddings in the structure module.
+
+    Parameters:
+        c: Channel dimension of the node embeddings.
+    """
     def __init__(self, c):
         super(StructureModuleTransition, self).__init__()
 
@@ -194,6 +302,15 @@ class StructureModuleTransition(nn.Module):
         self.ln = nn.LayerNorm(self.c)
 
     def forward(self, s):
+        """
+        Forward pass to update node embeddings.
+
+        Parameters:
+            s: Input node embeddings.
+
+        Returns:
+            Updated node embeddings.
+        """
         s_initial = s
         s = self.linear_1(s)
         s = self.relu(s)
@@ -207,6 +324,16 @@ class StructureModuleTransition(nn.Module):
 
 
 class EdgeTransition(nn.Module):
+    """
+    Transition module for updating edge embeddings.
+
+    Parameters:
+        node_embed_size: Dimension of node embeddings.
+        edge_embed_in: Input dimension of edge embeddings.
+        edge_embed_out: Output dimension of edge embeddings.
+        num_layers: Number of layers in the trunk network.
+        node_dilation: Dilation factor for node embedding.
+    """
     def __init__(
             self,
             *,
@@ -231,6 +358,16 @@ class EdgeTransition(nn.Module):
         self.layer_norm = nn.LayerNorm(edge_embed_out)
 
     def forward(self, node_embed, edge_embed):
+        """
+        Forward pass to update edge embeddings.
+
+        Parameters:
+            node_embed: Node embeddings.
+            edge_embed: Edge embeddings.
+
+        Returns:
+            Updated edge embeddings.
+        """
         node_embed = self.initial_embed(node_embed)
         batch_size, num_res, _ = node_embed.shape
         edge_bias = torch.cat([
@@ -250,7 +387,12 @@ class EdgeTransition(nn.Module):
 
 class InvariantPointAttention(nn.Module):
     """
-    Implements Algorithm 22.
+    Invariant Point Attention module.
+
+    Parameters:
+        ipa_conf: Configuration for IPA.
+        inf: Large value for mask.
+        eps: Small value to prevent numerical issues.
     """
     def __init__(
         self,
@@ -323,6 +465,8 @@ class InvariantPointAttention(nn.Module):
         _z_reference_list: Optional[Sequence[torch.Tensor]] = None,
     ) -> torch.Tensor:
         """
+        Forward pass of IPA.
+
         Args:
             s:
                 [*, N_res, C_s] single representation
@@ -485,6 +629,14 @@ class InvariantPointAttention(nn.Module):
 
 
 class TorsionAngles(nn.Module):
+    """
+    Predicts torsion angles from node embeddings.
+
+    Parameters:
+        c: Channel dimension of node embeddings.
+        num_torsions: Number of torsion angles to predict.
+        eps: Small value to prevent numerical issues.
+    """
     def __init__(self, c, num_torsions, eps=1e-8):
         super(TorsionAngles, self).__init__()
 
@@ -502,6 +654,16 @@ class TorsionAngles(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, s):
+        """
+        Forward pass to predict torsion angles.
+
+        Parameters:
+            s: Node embeddings.
+
+        Returns:
+            unnormalized_s: Unnormalized torsion angle predictions.
+            normalized_s: Normalized torsion angle predictions.
+        """
         s_initial = s
         s = self.linear_1(s)
         s = self.relu(s)
@@ -521,6 +683,12 @@ class TorsionAngles(nn.Module):
 
 
 class RotationVFLayer(nn.Module):
+    """
+    Rotation Vector Field layer.
+
+    Parameters:
+        dim: Dimension of input embeddings.
+    """
     def __init__(self, dim):
         super(RotationVFLayer, self).__init__()
 
@@ -531,6 +699,15 @@ class RotationVFLayer(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, s):
+        """
+        Forward pass to predict rotation updates.
+
+        Parameters:
+            s: Node embeddings.
+
+        Returns:
+            Rotation updates.
+        """
         s_initial = s
         s = self.linear_1(s)
         s = self.relu(s)
@@ -543,7 +720,11 @@ class RotationVFLayer(nn.Module):
 
 class BackboneUpdate(nn.Module):
     """
-    Implements part of Algorithm 23.
+    Updates backbone structures based on node embeddings.
+
+    Parameters:
+        c_s: Channel dimension of node embeddings.
+        use_rot_updates: Whether to use rotation updates.
     """
 
     def __init__(self, c_s, use_rot_updates):
@@ -561,6 +742,8 @@ class BackboneUpdate(nn.Module):
 
     def forward(self, s: torch.Tensor):
         """
+        Forward pass to predict backbone updates.
+
         Args:
             [*, N_res, C_s] single representation
         Returns:
@@ -572,7 +755,13 @@ class BackboneUpdate(nn.Module):
         return update
 
 class IpaScore(nn.Module):
+    """
+    Computes scores for rotations and translations using IPA modules.
 
+    Parameters:
+        model_conf: Model configuration.
+        diffuser: Diffusion model for score computation.
+    """
     def __init__(self, model_conf, diffuser):
         super(IpaScore, self).__init__()
         self._model_conf = model_conf
@@ -624,6 +813,17 @@ class IpaScore(nn.Module):
         self.torsion_pred = TorsionAngles(ipa_conf.c_s, 1)
 
     def forward(self, init_node_embed, edge_embed, input_feats):
+        """
+        Forward pass to compute scores.
+
+        Parameters:
+            init_node_embed: Initial node embeddings.
+            edge_embed: Edge embeddings.
+            input_feats: Input features including masks and rigids.
+
+        Returns:
+            model_out: Dictionary containing predicted torsion angles, rotation and translation scores, and final rigids.
+        """
         node_mask = input_feats['res_mask'].type(torch.float32)
         diffuse_mask = (1 - input_feats['fixed_mask'].type(torch.float32)) * node_mask
         edge_mask = node_mask[..., None] * node_mask[..., None, :]

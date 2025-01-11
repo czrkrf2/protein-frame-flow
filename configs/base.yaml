@@ -17,7 +17,7 @@ data:
 
   sampler:
     # Setting for 48GB GPUs
-    max_batch_size: 80
+    max_batch_size: 1
     max_num_res_squared: 400_000
 
 interpolant:

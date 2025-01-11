@@ -24,6 +24,15 @@ from analysis import utils as au
 
 
 def process_chain(design_pdb_feats):
+    """
+    Process chain features from a PDB file into tensors and apply transformations.
+
+    Parameters:
+        design_pdb_feats (dict): Dictionary containing PDB features.
+
+    Returns:
+        dict: Processed chain features.
+    """
     chain_feats = {
         'aatype': torch.tensor(design_pdb_feats['aatype']).long(),
         'all_atom_positions': torch.tensor(design_pdb_feats['atom_positions']).double(),
@@ -38,13 +47,30 @@ def process_chain(design_pdb_feats):
     return chain_feats
 
 def create_pad_feats(pad_amt):
+    """
+    Create padding features for sequences of a certain length.
+
+    Parameters:
+        pad_amt (int): Amount of padding to create.
+
+    Returns:
+        dict: Padding features containing zero tensors.
+    """
     pad_feats = {
         'rigids_impute': torch.zeros((pad_amt, 4, 4)),
     }
     return pad_feats
 
 def process_motif_row(motif_row):
-    """Parse row in the motif CSV."""
+    """
+    Parse a row from the motif CSV file and process PDB features.
+
+    Parameters:
+        motif_row (pd.Series): Row from the motif CSV file.
+
+    Returns:
+        dict: Dictionary of processed chain features.
+    """
     motif_path = motif_row.motif_path
     motif_chain_feats = du.parse_pdb_feats(
         'motif', motif_path, chain_id=None)
@@ -53,7 +79,17 @@ def process_motif_row(motif_row):
     }
 
 def create_motif_feats(chain_feats, start_idx, end_idx):
-    """Extract subset of features in chain_feats."""
+    """
+    Extract a subset of features from chain features between start and end indices.
+
+    Parameters:
+        chain_feats (dict): Chain features.
+        start_idx (int): Start index of the subset.
+        end_idx (int): End index of the subset.
+
+    Returns:
+        dict: Extracted features containing rigids.
+    """
     motif_length = end_idx - start_idx + 1
     motif_rigids = chain_feats['rigidgroups_gt_frames'][:, 0]
     pad_feats = {
@@ -63,7 +99,15 @@ def create_motif_feats(chain_feats, start_idx, end_idx):
 
 
 def motif_locations_from_contig(sample_contig):
-    # Parse contig.
+    """
+    Parse a contig string to find motif locations.
+
+    Parameters:
+        sample_contig (str): Contig string.
+
+    Returns:
+        list: List of tuples indicating start and end indices of motif segments.
+    """
     length_so_far = 0
     motif_locations = []
     for segment in sample_contig.split(','):
@@ -125,6 +169,15 @@ def process_contig(sample_contig, all_chain_feats):
     return motif_rigids, motif_locations, length_so_far, motif_aatypes, motif_atom_positions
 
 def load_contig_test_case(row):
+    """
+    Load and process a test case from a DataFrame row.
+
+    Parameters:
+        row (pd.Series): DataFrame row containing motif information.
+
+    Returns:
+        dict: Dictionary containing motif segments and related information.
+    """
     motif_chain_feats = process_motif_row(row)
     motif_length = row.length
     motif_contig = row.contig
@@ -156,6 +209,15 @@ def load_contig_test_case(row):
     return contig_test_case
 
 def load_contigs_by_test_case(inpaint_df):
+    """
+    Load contig information for all test cases in the DataFrame.
+
+    Parameters:
+        inpaint_df (pd.DataFrame): DataFrame containing motif information.
+
+    Returns:
+        dict: Dictionary containing contig information for each test case.
+    """
     contigs_by_test_case = {}
     for _, row in inpaint_df.iterrows():
         name = str(row.target)
@@ -201,6 +263,12 @@ def save_motifs(csv_path, motif_segments_base_dir):
             pkl.dump(motif_segments, f)
 
 def run():
+    """
+    Main function to set up directories, call save_motifs(), and print elapsed time.
+
+    Returns:
+        None
+    """
     motif_segments_base_dir = "./motif_scaffolding//targets/"
     target_csv = "./motif_scaffolding//benchmark.csv"
 

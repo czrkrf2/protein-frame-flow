@@ -14,6 +14,15 @@ from openfold.utils import rigid_utils as ru
 
 class LengthDataset(torch.utils.data.Dataset):
     def __init__(self, samples_cfg):
+        """
+        Initializes a dataset for protein lengths based on configuration.
+
+        Parameters:
+            samples_cfg: Configuration object containing parameters like min_length, max_length, length_step, and length_subset.
+
+        Initializes:
+            _all_sample_ids: List of tuples (length, sample_id) for each sample.
+        """
         self._samples_cfg = samples_cfg
         all_sample_lengths = range(
             self._samples_cfg.min_length,
@@ -31,9 +40,24 @@ class LengthDataset(torch.utils.data.Dataset):
         self._all_sample_ids = all_sample_ids
 
     def __len__(self):
+        """
+        Returns the total number of samples.
+
+        Returns:
+            int: Total number of sample IDs.
+        """
         return len(self._all_sample_ids)
 
     def __getitem__(self, idx):
+        """
+        Fetches a sample based on index.
+
+        Parameters:
+            idx: Index of the sample.
+
+        Returns:
+            dict: Dictionary containing 'num_res' (length) and 'sample_id'.
+        """
         num_res, sample_id = self._all_sample_ids[idx]
         batch = {
             'num_res': num_res,
@@ -44,6 +68,15 @@ class LengthDataset(torch.utils.data.Dataset):
 
 class ScaffoldingDataset(torch.utils.data.Dataset):
     def __init__(self, samples_cfg):
+        """
+        Initializes a dataset for protein scaffolding based on configuration.
+
+        Parameters:
+            samples_cfg: Configuration object containing parameters like csv_path, target_subset, and num_batch.
+
+        Initializes:
+            _all_sample_ids: List of tuples (target_row, sample_ids) for each sample.
+        """
         self._samples_cfg = samples_cfg
         self._benchmark_df = pd.read_csv(self._samples_cfg.csv_path)
         if self._samples_cfg.target_subset is not None:
@@ -68,9 +101,24 @@ class ScaffoldingDataset(torch.utils.data.Dataset):
         self._all_sample_ids = all_sample_ids
 
     def __len__(self):
+        """
+        Returns the total number of samples.
+
+        Returns:
+            int: Total number of sample IDs.
+        """
         return len(self._all_sample_ids)
 
     def __getitem__(self, idx):
+        """
+        Fetches a sample based on index.
+
+        Parameters:
+            idx: Index of the sample.
+
+        Returns:
+            dict: Dictionary containing 'target', 'sample_id', 'trans_1', 'rotmats_1', 'diffuse_mask', and 'aatype'.
+        """
         target_row, sample_id = self._all_sample_ids[idx]
         target = target_row.target
         motif_contig_info = save_motif_segments.load_contig_test_case(target_row)
@@ -120,6 +168,15 @@ def get_sampled_mask(contigs, length, rng=None, num_tries=1000000):
     Parses contig and length argument to sample scaffolds and motifs.
 
     Taken from rosettafold codebase.
+
+    Parameters:
+        contigs: String representing contigs.
+        length: List of two integers indicating the range of lengths.
+        rng: Random number generator.
+        num_tries: Maximum number of attempts to find a compatible length.
+
+    Returns:
+        tuple: Sampled mask, sampled mask length, and number of inpainted chains.
     '''
     length_compatible=False
     count = 0
@@ -176,6 +233,17 @@ def get_sampled_mask(contigs, length, rng=None, num_tries=1000000):
 
 
 def dataset_creation(dataset_class, cfg, task):
+    """
+    Creates training and evaluation datasets based on the dataset class and configuration.
+
+    Parameters:
+        dataset_class: Dataset class to be instantiated.
+        cfg: Configuration object.
+        task: Task identifier.
+
+    Returns:
+        tuple: Training dataset and evaluation dataset.
+    """
     train_dataset = dataset_class(
         dataset_cfg=cfg,
         task=task,
@@ -190,6 +258,15 @@ def dataset_creation(dataset_class, cfg, task):
 
 
 def get_available_device(num_device):
+    """
+    Retrieves available GPU devices based on memory usage.
+
+    Parameters:
+        num_device: Number of devices to retrieve.
+
+    Returns:
+        list: List of device indices with least memory usage.
+    """
     return GPUtil.getAvailable(order='memory', limit = 8)[:num_device]
 
 
@@ -261,7 +338,15 @@ def save_traj(
 
 
 def get_pylogger(name=__name__) -> logging.Logger:
-    """Initializes multi-GPU-friendly python command line logger."""
+    """
+    Initializes a multi-GPU-friendly Python logger.
+
+    Parameters:
+        name: Logger name, default is the current module name.
+
+    Returns:
+        logging.Logger: Configured logger instance.
+    """
 
     logger = logging.getLogger(name)
 
@@ -275,7 +360,15 @@ def get_pylogger(name=__name__) -> logging.Logger:
 
 
 def flatten_dict(raw_dict):
-    """Flattens a nested dict."""
+    """
+    Flattens a nested dictionary into a list of tuples.
+
+    Parameters:
+        raw_dict: Dictionary to be flattened.
+
+    Returns:
+        list: List of tuples representing the flattened dictionary.
+    """
     flattened = []
     for k, v in raw_dict.items():
         if isinstance(v, dict):

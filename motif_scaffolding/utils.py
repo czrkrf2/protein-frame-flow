@@ -2,13 +2,16 @@ import numpy as np
 def fixed_idcs_mask_from_index_mapping_and_redesign_idcs(
         source_idx_to_full_idx, contig, redesign_idcs, L):
     """
-    Given a mapping from source indices to full indices, and a string of redesign indices,
-    return a boolean mask of the full indices that are fixed.
+    Generates a boolean mask indicating which indices are fixed based on a mapping and redesign indices.
 
     Args:
-        source_idx_to_full_idx (dict): mapping from source indices to full indices
-        contig (str): string of contig, e.g. "5-20,A16-35,10-25,A52-71,5-20"
-        redesign_idcs (str): string of redesign indices, e.g. "A16-19,A21,A23,A25,A27-30"
+        source_idx_to_full_idx (dict): Mapping from source indices to full indices.
+        contig (str): String representing contiguous segments, e.g., "5-20,A16-35,10-25,A52-71,5-20".
+        redesign_idcs (str): String of indices to be redesigned, e.g., "A16-19,A21,A23,A25,A27-30".
+        L (int): Total length of the sequence.
+
+    Returns:
+        fixed_mask (numpy.ndarray): Boolean array where 1 indicates fixed positions.
     """
     redesign_mask = np.ones(L, dtype=int) # assume all are redesignable by default
 
@@ -51,14 +54,16 @@ def fixed_idcs_mask_from_index_mapping_and_redesign_idcs(
 
 def motif_locs_and_contig_to_fixed_idcs_mask(motif_locs, contig, redesign_idcs, L):
     """
-    Given the motif locations and the contig, return a boolean mask of the full indices that are fixed.
-
+    Computes a fixed indices mask based on motif locations, contig, and redesign indices.
 
     Args:
-        motif_locs (list): list of tuples of motif locations, e.g. [(5, 20), (62, 77)]
-        contig (str): string of contig, e.g. "5-20,A16-35,10-25,A52-71,5-20"
-        redesign_idcs (str): string of redesign indices, e.g. "A16-19,A21,A23,A25,A27-30"
-        L (int): length of the full protein
+        motif_locs (list of tuples): List of motif start and end positions, e.g., [(5, 20), (62, 77)].
+        contig (str): String representing contiguous segments.
+        redesign_idcs (str): String of indices to be redesigned.
+        L (int): Total length of the sequence.
+
+    Returns:
+        fixed_idcs_mask (numpy.ndarray): Boolean array indicating fixed positions.
     """
     ranges = contig.split(",")
     ranges = [r for r in ranges if r[0].isupper()]
@@ -80,6 +85,18 @@ def motif_locs_and_contig_to_fixed_idcs_mask(motif_locs, contig, redesign_idcs, 
     return fixed_idcs_mask
 
 def seq_indices_to_fix(motif_locs, contig, redesign_idcs, L=None):
+    """
+    Retrieves the indices of the sequence that need to be fixed.
+
+    Args:
+        motif_locs (list of tuples): List of motif start and end positions.
+        contig (str): String representing contiguous segments.
+        redesign_idcs (str): String of indices to be redesigned.
+        L (int, optional): Total length of the sequence. Defaults to None.
+
+    Returns:
+        idcs (list of int): List of indices that are fixed.
+    """
     if L == None:
         L = 2*max([end for _, end in motif_locs])
     mask = motif_locs_and_contig_to_fixed_idcs_mask(motif_locs, contig, redesign_idcs, L)

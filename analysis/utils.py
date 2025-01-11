@@ -14,6 +14,18 @@ def create_full_prot(
         aatype=None,
         b_factors=None,
     ):
+    """
+    Create a full protein object from atom coordinates and masks.
+
+    Parameters:
+    - atom37: numpy array of shape (n_residues, 37, 3) containing atom coordinates.
+    - atom37_mask: numpy array of shape (n_residues, 37) indicating valid atoms.
+    - aatype: numpy array of shape (n_residues,) indicating amino acid types. Defaults to zeros.
+    - b_factors: numpy array of shape (n_residues, 37) indicating B-factors. Defaults to zeros.
+
+    Returns:
+    - A protein.Protein object containing the protein structure data.
+    """
     assert atom37.ndim == 3
     assert atom37.shape[-1] == 3
     assert atom37.shape[-2] == 37
@@ -41,6 +53,22 @@ def write_prot_to_pdb(
         no_indexing=False,
         b_factors=None,
     ):
+    """
+    Write protein structure to a PDB file.
+
+    Parameters:
+    - prot_pos: numpy array of protein atom coordinates.
+                Can be of shape (n_residues, 37, 3) for a single model,
+                or (n_models, n_residues, 37, 3) for multiple models.
+    - file_path: String specifying the path to the output PDB file.
+    - aatype: numpy array of shape (n_residues,) indicating amino acid types. Defaults to None.
+    - overwrite: Boolean indicating whether to overwrite existing files. Defaults to False.
+    - no_indexing: Boolean indicating whether to skip indexing in file naming. Defaults to False.
+    - b_factors: numpy array of shape (n_residues, 37) indicating B-factors. Defaults to None.
+
+    Returns:
+    - The path to the saved PDB file.
+    """
     if overwrite:
         max_existing_idx = 0
     else:

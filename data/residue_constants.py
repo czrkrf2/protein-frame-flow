@@ -712,7 +712,14 @@ STANDARD_ATOM_MASK = _make_standard_atom_mask()
 # A one hot representation for the first and second atoms defining the axis
 # of rotation for each chi-angle in each residue.
 def chi_angle_atom(atom_index: int) -> np.ndarray:
-  """Define chi-angle rigid groups via one-hot representations."""
+  """Define chi-angle rigid groups via one-hot representations.
+    
+    Args:
+        atom_index: Index of the atom in the chi angle.
+    
+    Returns:
+        One-hot array representing the chi angle atoms.
+  """
   chi_angles_index = {}
   one_hots = []
 
@@ -754,7 +761,16 @@ chi_groups_for_atom = dict(chi_groups_for_atom)
 
 
 def _make_rigid_transformation_4x4(ex, ey, translation):
-  """Create a rigid 4x4 transformation matrix from two axes and transl."""
+  """Create a rigid 4x4 transformation matrix from two axes and translation.
+    
+    Args:
+        ex: x-axis vector.
+        ey: y-axis vector.
+        translation: translation vector.
+    
+    Returns:
+        4x4 transformation matrix.
+  """
   # Normalize ex.
   ex_normalized = ex / np.linalg.norm(ex)
 
@@ -855,7 +871,15 @@ _make_rigid_group_constants()
 
 def make_atom14_dists_bounds(overlap_tolerance=1.5,
                              bond_length_tolerance_factor=15):
-  """compute upper and lower bounds for bonds to assess violations."""
+  """Compute upper and lower bounds for bonds to assess violations.
+    
+    Args:
+        overlap_tolerance: Tolerance for overlap in Van der Waals radii.
+        bond_length_tolerance_factor: Factor for bond length tolerance.
+    
+    Returns:
+        Dictionary with 'lower_bound', 'upper_bound', and 'stddev' arrays.
+    """
   restype_atom14_bond_lower_bound = np.zeros([21, 14, 14], np.float32)
   restype_atom14_bond_upper_bound = np.zeros([21, 14, 14], np.float32)
   restype_atom14_bond_stddev = np.zeros([21, 14, 14], np.float32)

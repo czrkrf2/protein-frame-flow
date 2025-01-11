@@ -18,6 +18,12 @@ from torch.utils.data.distributed import DistributedSampler, dist
 
 class PdbDataModule(LightningDataModule):
     def __init__(self, data_cfg):
+        """
+        Initialize the PdbDataModule.
+
+        Parameters:
+            data_cfg: Configuration object containing data parameters.
+        """
         super().__init__()
         self.data_cfg = data_cfg
         self.loader_cfg = data_cfg.loader
@@ -25,6 +31,12 @@ class PdbDataModule(LightningDataModule):
         self.sampler_cfg = data_cfg.sampler
 
     def setup(self, stage: str):
+        """
+        Set up the datasets for training and validation.
+
+        Parameters:
+            stage (str): Stage of the model lifecycle ('fit', 'validate', etc.).
+        """
         self._train_dataset = PdbDataset(
             dataset_cfg=self.dataset_cfg,
             is_training=True,
@@ -35,6 +47,16 @@ class PdbDataModule(LightningDataModule):
         )
 
     def train_dataloader(self, rank=None, num_replicas=None):
+        """
+        Create the training data loader.
+
+        Parameters:
+            rank (int, optional): Rank of the current process.
+            num_replicas (int, optional): Total number of processes.
+
+        Returns:
+            DataLoader: Training data loader.
+        """
         num_workers = self.loader_cfg.num_workers
         return DataLoader(
             self._train_dataset,
@@ -51,6 +73,12 @@ class PdbDataModule(LightningDataModule):
         )
 
     def val_dataloader(self):
+        """
+        Create the validation data loader.
+
+        Returns:
+            DataLoader: Validation data loader.
+        """
         return DataLoader(
             self._valid_dataset,
             sampler=DistributedSampler(self._valid_dataset, shuffle=False),
@@ -67,6 +95,13 @@ class PdbDataset(Dataset):
             dataset_cfg,
             is_training,
         ):
+        """
+        Initialize the PdbDataset.
+
+        Parameters:
+            dataset_cfg: Configuration object for the dataset.
+            is_training (bool): Whether this is a training dataset.
+        """
         self._log = logging.getLogger(__name__)
         self._is_training = is_training
         self._dataset_cfg = dataset_cfg
@@ -75,15 +110,28 @@ class PdbDataset(Dataset):
 
     @property
     def is_training(self):
+        """
+        Check if this is a training dataset.
+
+        Returns:
+            bool: True if training dataset, False otherwise.
+        """
         return self._is_training
 
     @property
     def dataset_cfg(self):
+        """
+        Get the dataset configuration.
+
+        Returns:
+            object: Dataset configuration object.
+        """
         return self._dataset_cfg
 
     def _init_metadata(self):
-        """Initialize metadata."""
-
+        """
+        Initialize dataset metadata, filtering and sorting the data.
+        """
         # Process CSV with different filtering criterions.
         pdb_csv = pd.read_csv(self.dataset_cfg.csv_path)
         self.raw_csv = pdb_csv
@@ -116,6 +164,15 @@ class PdbDataset(Dataset):
                 f'Validation: {len(self.csv)} examples with lengths {eval_lengths}')
 
     def _process_csv_row(self, processed_file_path):
+        """
+        Process a single CSV row to extract and transform features.
+
+        Parameters:
+            processed_file_path (str): Path to the processed file.
+
+        Returns:
+            dict: Processed features.
+        """
         processed_feats = du.read_pkl(processed_file_path)
         processed_feats = du.parse_chain_feats(processed_feats)
 
@@ -147,9 +204,24 @@ class PdbDataset(Dataset):
         }
 
     def __len__(self):
+        """
+        Get the number of examples in the dataset.
+
+        Returns:
+            int: Number of examples.
+        """
         return len(self.csv)
 
     def __getitem__(self, idx):
+        """
+        Get an example by index.
+
+        Parameters:
+            idx (int): Index of the example.
+
+        Returns:
+            dict: Example features.
+        """
         # Sample data example.
         example_idx = idx
         csv_row = self.csv.iloc[example_idx]
@@ -171,6 +243,17 @@ class LengthBatcher:
             num_replicas=None,
             rank=None,
         ):
+        """
+        Initialize the LengthBatcher.
+
+        Parameters:
+            sampler_cfg: Configuration object for the sampler.
+            metadata_csv: CSV containing metadata.
+            seed (int): Random seed.
+            shuffle (bool): Whether to shuffle batches.
+            num_replicas (int, optional): Total number of replicas.
+            rank (int, optional): Rank of the current process.
+        """
         super().__init__()
         self._log = logging.getLogger(__name__)
         if num_replicas is None:
@@ -195,6 +278,12 @@ class LengthBatcher:
         self._log.info(f'Created dataloader rank {self.rank+1} out of {self.num_replicas}')
         
     def _replica_epoch_batches(self):
+        """
+        Create batches for the current replica for the current epoch.
+
+        Returns:
+            list: List of batches, each batch is a list of indices.
+        """
         # Make sure all replicas share the same seed on each epoch.
         rng = torch.Generator()
         rng.manual_seed(self.seed + self.epoch)
@@ -228,6 +317,9 @@ class LengthBatcher:
         return [sample_order[i] for i in new_order]
 
     def _create_batches(self):
+        """
+        Create all batches for the current epoch.
+        """
         # Make sure all replicas have the same number of batches Otherwise leads to bugs.
         # See bugs with shuffling https://github.com/Lightning-AI/lightning/issues/10947
         all_batches = []
@@ -242,9 +334,21 @@ class LengthBatcher:
         self.sample_order = all_batches
 
     def __iter__(self):
+        """
+        Iterate over the batches for the current epoch.
+
+        Returns:
+            iterator: Iterator over batches.
+        """
         self._create_batches()
         self.epoch += 1
         return iter(self.sample_order)
 
     def __len__(self):
+        """
+        Get the number of batches.
+
+        Returns:
+            int: Number of batches.
+        """
         return len(self.sample_order)

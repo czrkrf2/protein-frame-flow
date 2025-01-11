@@ -16,6 +16,16 @@ import numpy as np
 
 
 def find_ranges_and_lengths(data):
+    """
+    Finds consecutive ranges and their lengths in a list of data indices.
+    
+    Args:
+        data: List of indices.
+        
+    Returns:
+        ranges: List of tuples representing the start and end of each range.
+        lengths: List of lengths corresponding to each range.
+    """
     ranges, lengths = [], []
     for _, group in groupby(enumerate(data), lambda indexitem: indexitem[0] - indexitem[1]):
         group = list(map(itemgetter(1), group))
@@ -25,12 +35,16 @@ def find_ranges_and_lengths(data):
 
 
 def perturbations_for_grad(sample_feats):
-    """perturbations_for_grad turns xt composed with an identity perturbation
-    from which gradients may be computed.
-
+    """
+    Perturbs the input features for gradient computation.
+    
     Args:
-        sample_feats: dict, contains sample features, including xt and Rt which are perturbed
-        se3_diffuser: SE3Diffuser, used to scale and unscale xt
+        sample_feats: Dictionary containing sample features including 'rotmats_t' and 'trans_t'.
+        
+    Returns:
+        sample_feats: Updated sample features with perturbed rotations and translations.
+        Log_delta_R: Perturbation for rotations.
+        delta_x: Perturbation for translations.
     """
     device = sample_feats['rotmats_t'].device
     #NOTE: otherwise getting 'RuntimeError: Inference tensors cannot be saved for backward.'
@@ -65,7 +79,24 @@ def perturbations_for_grad(sample_feats):
 
 
 def step(trans_t, rotmats_t, trans_grad_t, grad_Log_delta_R, d_t, trans_scale_t, rot_scale_t, twist_update_trans, twist_update_rot, max_norm=1e3):
-
+    """
+    Performs an update step using gradients and perturbations.
+    
+    Args:
+        trans_t: Current translations.
+        rotmats_t: Current rotation matrices.
+        trans_grad_t: Gradient for translations.
+        grad_Log_delta_R: Gradient for rotation perturbation.
+        d_t: Time step.
+        trans_scale_t: Scaling factor for translations.
+        rot_scale_t: Scaling factor for rotations.
+        twist_update_trans: Flag to update translations.
+        twist_update_rot: Flag to update rotations.
+        max_norm: Maximum norm for rotation updates.
+        
+    Returns:
+        Updated translations and rotation matrices.
+    """
     if sum(torch.isnan(grad_Log_delta_R).flatten()) > 0:
         num_nans = sum(torch.isnan(grad_Log_delta_R).flatten())
         print(f"grad_Log_delta_R has {num_nans} nans out of {len(grad_Log_delta_R.flatten())}")
@@ -161,19 +192,17 @@ def motif_rots_vec_F(trans_motif, R_motif, num_rots=1, align=True, scale=math.in
 
 
 def get_all_motif_locations(L, segment_lengths, max_offsets=1000, first_call=True):
-    """get_all_motif_locations returns of all possible starting and ending locations segments of length segment_lengths
-    such that not of the segments overlap, the smallest starting location at least 0, and the largest ending location is at most L-1.
-
-    The function works recursively.  First, it computes all possible starting and ending locations for the first segment.
-    Then, it computes all possible starting and ending locations for the second segment, given the starting and ending locations
-
+    """
+    Computes all possible starting and ending positions for motif segments.
+    
     Args:
-        L: int, length of sequence
-        segment_lengths: list of ints, length of each segment
-        max_offsets: int, maximum number of motif offsets to return
-
+        L: Length of the sequence.
+        segment_lengths: List of lengths for each motif segment.
+        max_offsets: Maximum number of motif offsets to return.
+        first_call: Flag for downsampling.
+        
     Returns:
-        all_motif_locations: list of lists of tuples, each tuple is a (start, end) location for a segment
+        all_motif_locations: List of motif locations.
     """
     st_0_min = 0
     st_0_max = L - sum(segment_lengths)
@@ -204,8 +233,20 @@ def get_all_motif_locations(L, segment_lengths, max_offsets=1000, first_call=Tru
 
 
 def motif_offsets(L, motif_segments_length, motif_locations=None, max_offsets=1000, device=torch.device('cpu'), dtype=torch.float64):
-    """motif_offsets returns a matrix F that pulls out the motif segments at the motif locations.
-
+    """
+    Creates an offset matrix F that selects motif segments from the full sequence.
+    
+    Args:
+        L: Length of the sequence.
+        motif_segments_length: List of lengths for each motif segment.
+        motif_locations: List of motif locations.
+        max_offsets: Maximum number of motif offsets.
+        device: Device for tensors.
+        dtype: Data type for tensors.
+        
+    Returns:
+        F: Offset matrix.
+        all_motif_locations: List of motif locations.
     """
     # If motif_locations is not None, then we are using a fixed motif location.
     # Set F to be a matrix that pulls out the motif segments at the fixed location
@@ -231,20 +272,27 @@ def motif_offsets(L, motif_segments_length, motif_locations=None, max_offsets=10
 def motif_offsets_and_rots_vec_F(L, motif_segments_length, motif_locations=None,
         num_rots=1, align=False, scale=math.inf, trans_motif=None, R_motif=None, max_offsets=1000, device=torch.device('cpu'),
         dtype=torch.float64, return_rots=True):
-    """motif_offsets_and_rots_vec_F
+    """
+    Combines offset and rotation functions to project predictions.
+    
     Args:
-        L: number of residues in full scaffold
-        motif_segments: list of tensors of shape [M_i, 7], where M_i is the number of residues in the ith motif segment
-        motif_locations: list of list of tuples, each tuple is a (start, end) location for a segment,
-            or None if we want to marginalize out motif_location.  When provided if there is only one
-            set of motif locations, we use this set of locations for all items in the batch.  This is
-            desirable in the case where we are doing particle filtering with the motif location fixed.
-            Otherwise, motif_locations can be a list where each item in the list correspond to a example
-            in the batch.
-        num_rots: number of rotation matrices to include in conditioning
-
+        L: Length of the sequence.
+        motif_segments_length: List of lengths for each motif segment.
+        motif_locations: List of motif locations.
+        num_rots: Number of rotations to sample.
+        align: Flag to align predictions with motif.
+        scale: Scale for rotation sampling.
+        trans_motif: Translations of the motif.
+        R_motif: Rotation matrices of the motif.
+        max_offsets: Maximum number of motif offsets.
+        device: Device for tensors.
+        dtype: Data type for tensors.
+        return_rots: Flag to return rotation matrices.
+        
     Returns:
-    F: a function that takes a tensor of shape [B, L, 7] and returns a tensor of shape [B, num_rots*num_offsets, M, 7]
+        F: Function that applies rotations to predictions.
+        motif_locations: List of motif locations.
+        F_rots: Rotation matrices (if return_rots is True).
     """
     M = sum([segment_length for segment_length in motif_segments_length])
     # if motif_locations is None or len(motif_locations) == 1:
@@ -329,13 +377,28 @@ def grad_log_lik_approx(
         R_pred, trans_pred, R_motif, trans_motif, Log_delta_R, delta_x, se3_diffuser, 
         rt_sq_trans, rt_sq_rot, F, twist_potential_rot=True, twist_potential_trans=True,
         ):
-    """grad_log_lik_approx approximates gradients of conditional log likelihood
-        grad_x log p(motif_x | X_t) and grad_R log p(motif_x | X_t)
-        for p(motif_x | X_t) \propto \sum_{g\in F} N(motif_x; F(X), Var[x0|xt])
-
+    """
+    Approximates gradients of conditional log likelihood for motif predictions.
+    
     Args:
-        rigids_t, rigids_pred, rigids_motif: tensors of shape [B, L, 7], [B, L, 7] and [M, 7]
-            xt, hat x0, and x0_M respectively.
+        R_pred: Predicted rotation matrices.
+        trans_pred: Predicted translations.
+        R_motif: Motif rotation matrices.
+        trans_motif: Motif translations.
+        Log_delta_R: Logarithm of rotation perturbation.
+        delta_x: Translation perturbation.
+        se3_diffuser: SE(3) diffuser object.
+        rt_sq_trans: Squared translation scaling.
+        rt_sq_rot: Squared rotation scaling.
+        F: Function that applies rotations to predictions.
+        twist_potential_rot: Flag to use rotation potential.
+        twist_potential_trans: Flag to use translation potential.
+        
+    Returns:
+        grad_Log_delta_R: Gradient for rotation perturbation.
+        grad_x: Gradient for translation perturbation.
+        logs: Dictionary of logging information.
+        max_log_p_idx: Indices of maximum log probabilities.
     """
     logs = {}
     assert twist_potential_rot or twist_potential_trans
@@ -386,15 +449,22 @@ def grad_log_lik_approx(
 
 def log_lik_approx(R_pred, x_pred, R_motif, trans_motif, se3_diffuser, rt_sq_trans, rt_sq_rot
 ):
-    """log_lik_approx computes an approximation to p(motif_x | xt, f)
-
-    The computation is done in a batched manner.
-
+    """
+    Computes an approximation to the log likelihood of motif predictions.
+    
     Args:
-        R_pred, x_pred: tensors of shapes [B, |F|, M, 3, 3] and  [B, |F|, M, 3]
-        rigids_obs: tensors of shape [1, M, 7]
-
-    Returns a tensor of shape [|F|] of log likelihoods
+        R_pred: Predicted rotation matrices.
+        x_pred: Predicted translations.
+        R_motif: Motif rotation matrices.
+        trans_motif: Motif translations.
+        se3_diffuser: SE(3) diffuser object.
+        rt_sq_trans: Squared translation scaling.
+        rt_sq_rot: Squared rotation scaling.
+        
+    Returns:
+        log_p_rot: Log likelihood for rotations.
+        log_p_trans: Log likelihood for translations.
+        rmsd: Root mean squared deviation.
     """
     # Compute variance terms for likelihood approximations
     R_obs = R_motif

@@ -10,10 +10,32 @@ from motif_scaffolding import twisting
 
 
 def _centered_gaussian(num_batch, num_res, device):
+    """
+    Generates centered Gaussian noise for translation vectors.
+    
+    Parameters:
+        num_batch (int): Number of batches.
+        num_res (int): Number of residues.
+        device (torch.device): Computing device (CPU or GPU).
+    
+    Returns:
+        torch.Tensor: Tensor of shape (num_batch, num_res, 3) with centered Gaussian noise.
+    """
     noise = torch.randn(num_batch, num_res, 3, device=device)
     return noise - torch.mean(noise, dim=-2, keepdims=True)
 
 def _uniform_so3(num_batch, num_res, device):
+    """
+    Generates uniformly random rotation matrices in SO(3).
+    
+    Parameters:
+        num_batch (int): Number of batches.
+        num_res (int): Number of residues.
+        device (torch.device): Computing device (CPU or GPU).
+    
+    Returns:
+        torch.Tensor: Tensor of shape (num_batch, num_res, 3, 3) with random rotation matrices.
+    """
     return torch.tensor(
         Rotation.random(num_batch*num_res).as_matrix(),
         device=device,
@@ -21,9 +43,31 @@ def _uniform_so3(num_batch, num_res, device):
     ).reshape(num_batch, num_res, 3, 3)
 
 def _trans_diffuse_mask(trans_t, trans_1, diffuse_mask):
+    """
+    Applies diffusion mask to translation vectors.
+    
+    Parameters:
+        trans_t (torch.Tensor): Current translation vectors.
+        trans_1 (torch.Tensor): Target translation vectors.
+        diffuse_mask (torch.Tensor): Diffusion mask.
+    
+    Returns:
+        torch.Tensor: Translations with mask applied.
+    """
     return trans_t * diffuse_mask[..., None] + trans_1 * (1 - diffuse_mask[..., None])
 
 def _rots_diffuse_mask(rotmats_t, rotmats_1, diffuse_mask):
+    """
+    Applies diffusion mask to rotation matrices.
+    
+    Parameters:
+        rotmats_t (torch.Tensor): Current rotation matrices.
+        rotmats_1 (torch.Tensor): Target rotation matrices.
+        diffuse_mask (torch.Tensor): Diffusion mask.
+    
+    Returns:
+        torch.Tensor: Rotations with mask applied.
+    """
     return (
         rotmats_t * diffuse_mask[..., None, None]
         + rotmats_1 * (1 - diffuse_mask[..., None, None])
@@ -33,6 +77,12 @@ def _rots_diffuse_mask(rotmats_t, rotmats_1, diffuse_mask):
 class Interpolant:
 
     def __init__(self, cfg):
+        """
+        Initializes the interpolant with a configuration object.
+        
+        Parameters:
+            cfg: Configuration object containing settings for rotations, translations, and sampling.
+        """
         self._cfg = cfg
         self._rots_cfg = cfg.rots
         self._trans_cfg = cfg.trans
@@ -41,6 +91,12 @@ class Interpolant:
 
     @property
     def igso3(self):
+        """
+        Initializes and returns an instance of SampleIGSO3 if not already initialized.
+        
+        Returns:
+            so3_utils.SampleIGSO3: Instance for sampling from Inverse Gaussian distribution on SO(3).
+        """
         if self._igso3 is None:
             sigma_grid = torch.linspace(0.1, 1.5, 1000)
             self._igso3 = so3_utils.SampleIGSO3(
@@ -48,13 +104,40 @@ class Interpolant:
         return self._igso3
 
     def set_device(self, device):
+        """
+        Sets the device for computations.
+        
+        Parameters:
+            device (torch.device): Computing device (CPU or GPU).
+        """
         self._device = device
 
     def sample_t(self, num_batch):
+        """
+        Samples t values uniformly from a range adjusted by min_t.
+        
+        Parameters:
+            num_batch (int): Number of batches.
+        
+        Returns:
+            torch.Tensor: Tensor of shape (num_batch, 1) with sampled t values.
+        """
         t = torch.rand(num_batch, device=self._device)
         return t * (1 - 2*self._cfg.min_t) + self._cfg.min_t
 
     def _corrupt_trans(self, trans_1, t, res_mask, diffuse_mask):
+        """
+        Corrupts translation vectors according to the diffusion process.
+        
+        Parameters:
+            trans_1 (torch.Tensor): Target translation vectors.
+            t (torch.Tensor): Time tensor.
+            res_mask (torch.Tensor): Residue mask.
+            diffuse_mask (torch.Tensor): Diffusion mask.
+        
+        Returns:
+            torch.Tensor: Corrupted translation vectors.
+        """
         trans_nm_0 = _centered_gaussian(*res_mask.shape, self._device)
         trans_0 = trans_nm_0 * du.NM_TO_ANG_SCALE
         trans_t = (1 - t[..., None]) * trans_0 + t[..., None] * trans_1
@@ -62,6 +145,18 @@ class Interpolant:
         return trans_t * res_mask[..., None]
     
     def _corrupt_rotmats(self, rotmats_1, t, res_mask, diffuse_mask):
+        """
+        Corrupts rotation matrices according to the diffusion process.
+        
+        Parameters:
+            rotmats_1 (torch.Tensor): Target rotation matrices.
+            t (torch.Tensor): Time tensor.
+            res_mask (torch.Tensor): Residue mask.
+            diffuse_mask (torch.Tensor): Diffusion mask.
+        
+        Returns:
+            torch.Tensor: Corrupted rotation matrices.
+        """
         num_batch, num_res = res_mask.shape
         noisy_rotmats = self.igso3.sample(
             torch.tensor([1.5]),
@@ -79,6 +174,15 @@ class Interpolant:
         return _rots_diffuse_mask(rotmats_t, rotmats_1, diffuse_mask)
 
     def corrupt_batch(self, batch):
+        """
+        Applies corruption to a batch of data for training.
+        
+        Parameters:
+            batch (dict): Dictionary containing batch data.
+        
+        Returns:
+            dict: Dictionary with corrupted batch data.
+        """
         noisy_batch = copy.deepcopy(batch)
 
         # [B, N, 3]
@@ -120,6 +224,15 @@ class Interpolant:
         return noisy_batch
     
     def rot_sample_kappa(self, t):
+        """
+        Computes a scaling factor for rotations during sampling based on the schedule.
+        
+        Parameters:
+            t (torch.Tensor): Time tensor.
+        
+        Returns:
+            torch.Tensor: Scaling factor tensor.
+        """
         if self._rots_cfg.sample_schedule == 'exp':
             return 1 - torch.exp(-t*self._rots_cfg.exp_rate)
         elif self._rots_cfg.sample_schedule == 'linear':
@@ -129,14 +242,49 @@ class Interpolant:
                 f'Invalid schedule: {self._rots_cfg.sample_schedule}')
 
     def _trans_vector_field(self, t, trans_1, trans_t):
+        """
+        Computes the vector field for translations.
+        
+        Parameters:
+            t (torch.Tensor): Time tensor.
+            trans_1 (torch.Tensor): Target translation vectors.
+            trans_t (torch.Tensor): Current translation vectors.
+        
+        Returns:
+            torch.Tensor: Translation vector field.
+        """
         return (trans_1 - trans_t) / (1 - t)
 
     def _trans_euler_step(self, d_t, t, trans_1, trans_t):
+        """
+        Performs an Euler step for translations.
+        
+        Parameters:
+            d_t (float): Time step.
+            t (torch.Tensor): Current time tensor.
+            trans_1 (torch.Tensor): Target translation vectors.
+            trans_t (torch.Tensor): Current translation vectors.
+        
+        Returns:
+            torch.Tensor: Updated translation vectors.
+        """
         assert d_t > 0
         trans_vf = self._trans_vector_field(t, trans_1, trans_t)
         return trans_t + trans_vf * d_t
 
     def _rots_euler_step(self, d_t, t, rotmats_1, rotmats_t):
+        """
+        Performs an Euler step for rotations.
+        
+        Parameters:
+            d_t (float): Time step.
+            t (torch.Tensor): Current time tensor.
+            rotmats_1 (torch.Tensor): Target rotation matrices.
+            rotmats_t (torch.Tensor): Current rotation matrices.
+        
+        Returns:
+            torch.Tensor: Updated rotation matrices.
+        """
         if self._rots_cfg.sample_schedule == 'linear':
             scaling = 1 / (1 - t)
         elif self._rots_cfg.sample_schedule == 'exp':
@@ -163,6 +311,27 @@ class Interpolant:
             res_idx=None,
             verbose=False,
         ):
+        """
+        Main sampling method to generate trajectories of transformations.
+        
+        Parameters:
+            num_batch (int): Number of batches.
+            num_res (int): Number of residues.
+            model: Model used for sampling.
+            num_timesteps (int, optional): Number of timesteps for sampling.
+            trans_potential (callable, optional): Potential function for translations.
+            trans_0 (torch.Tensor, optional): Initial translation vectors.
+            rotmats_0 (torch.Tensor, optional): Initial rotation matrices.
+            trans_1 (torch.Tensor, optional): Target translation vectors.
+            rotmats_1 (torch.Tensor, optional): Target rotation matrices.
+            diffuse_mask (torch.Tensor, optional): Diffusion mask.
+            chain_idx (torch.Tensor, optional): Chain indices.
+            res_idx (torch.Tensor, optional): Residue indices.
+            verbose (bool, optional): Verbosity flag.
+        
+        Returns:
+            tuple: Trajectories of atom positions and clean trajectories.
+        """
         res_mask = torch.ones(num_batch, num_res, device=self._device)
 
         # Set-up initial prior samples
@@ -325,7 +494,25 @@ class Interpolant:
         return atom37_traj, clean_atom37_traj, clean_traj
 
     def guidance(self, trans_t, rotmats_t, model_out, motif_mask, R_motif, trans_motif, Log_delta_R, delta_x, t, d_t, logs_traj):
-        # Select motif
+        """
+        Provides guidance during sampling using gradients for motif scaffolding.
+        
+        Parameters:
+            trans_t (torch.Tensor): Current translation vectors.
+            rotmats_t (torch.Tensor): Current rotation matrices.
+            model_out (dict): Model output containing predictions.
+            motif_mask (torch.Tensor): Motif mask.
+            R_motif (torch.Tensor): Motif rotation matrices.
+            trans_motif (torch.Tensor): Motif translation vectors.
+            Log_delta_R (torch.Tensor): Logarithm of delta_R.
+            delta_x (torch.Tensor): Delta x.
+            t (torch.Tensor): Time tensor.
+            d_t (float): Time step.
+            logs_traj (defaultdict): Dictionary for logging trajectory information.
+        
+        Returns:
+            tuple: Updated transformations and logs.
+        """
         motif_mask = motif_mask.clone()
         trans_pred = model_out['pred_trans'][:, motif_mask]  # [B, motif_res, 3]
         R_pred = model_out['pred_rotmats'][:, motif_mask]  # [B, motif_res, 3, 3]

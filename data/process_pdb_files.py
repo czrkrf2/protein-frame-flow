@@ -130,6 +130,15 @@ def process_file(file_path: str, write_dir: str):
 
 
 def process_serially(all_paths, write_dir):
+    """Processes PDB files serially.
+
+    Args:
+        all_paths: List of paths to PDB files.
+        write_dir: Directory to write the processed pickles to.
+
+    Returns:
+        all_metadata: List of metadata dictionaries for each processed file.
+    """
     all_metadata = []
     for i, file_path in enumerate(all_paths):
         try:
@@ -149,6 +158,16 @@ def process_fn(
         file_path,
         verbose=None,
         write_dir=None):
+    """Wrapper function for processing a PDB file.
+
+    Args:
+        file_path: Path to the PDB file to process.
+        verbose: Whether to print verbose output.
+        write_dir: Directory to write the processed pickles to.
+
+    Returns:
+        metadata: Metadata dictionary for the processed file.
+    """
     try:
         start_time = time.time()
         metadata = process_file(
@@ -164,6 +183,7 @@ def process_fn(
 
 
 def main(args):
+    """Main function to process PDB files."""
     pdb_dir = args.pdb_dir
     all_file_paths = [
         os.path.join(pdb_dir, x)

@@ -6,6 +6,19 @@ from data import utils as du
 
 
 def calc_distogram(pos, min_bin, max_bin, num_bins):
+    """
+    Functionality: Computes a distance histogram (distogram) from atomic coordinates.
+
+    Parameters:
+
+        pos: Tensor of shape [batch_size, num_atoms, 3] containing atomic coordinates.
+
+        min_bin, max_bin: Scalars defining the range of distance bins.
+
+        num_bins: Integer specifying the number of distance bins.
+
+    Returns: A tensor of shape [batch_size, num_atoms, num_atoms, 1] containing the distance histogram.
+    """
     dists_2d = torch.linalg.norm(
         pos[:, :, None, :] - pos[:, None, :, :], axis=-1)[..., None]
     lower = torch.linspace(
@@ -40,6 +53,19 @@ def get_index_embedding(indices, embed_size, max_len=2056):
 
 
 def get_time_embedding(timesteps, embedding_dim, max_positions=2000):
+    """
+    Functionality: Generates time embeddings for diffusion models.
+
+    Parameters:
+
+        timesteps: Tensor of shape [batch_size] containing time steps.
+
+        embedding_dim: Integer specifying the dimension of the time embeddings.
+
+        max_positions: Integer specifying the maximum position value (default: 2000).
+
+    Returns: A tensor of shape [batch_size, embedding_dim] containing time embeddings.
+"""
     # Code from https://github.com/hojonathanho/diffusion/blob/master/diffusion_tf/nn.py
     assert len(timesteps.shape) == 1
     timesteps = timesteps * max_positions
@@ -55,7 +81,21 @@ def get_time_embedding(timesteps, embedding_dim, max_positions=2000):
 
 
 def t_stratified_loss(batch_t, batch_loss, num_bins=4, loss_name=None):
-    """Stratify loss by binning t."""
+    """
+    Functionality: Computes the loss stratified by time bins.
+
+    Parameters:
+
+        batch_t: Tensor of shape [batch_size] containing time steps.
+
+        batch_loss: Tensor of shape [batch_size, ...] containing loss values.
+
+        num_bins: Integer specifying the number of time bins (default: 4).
+
+        loss_name: String specifying the name of the loss for dictionary keys (default: 'loss').
+
+    Returns: A dictionary containing the mean loss for each time bin.
+    """
     batch_t = du.to_numpy(batch_t)
     batch_loss = du.to_numpy(batch_loss)
     flat_losses = batch_loss.flatten()

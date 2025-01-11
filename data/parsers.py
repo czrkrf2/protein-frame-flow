@@ -51,13 +51,19 @@ def process_chain(chain: Chain, chain_id: str) -> Protein:
     residue_index = []
     b_factors = []
     chain_ids = []
+
+    # Iterate over each residue in the chain
     for res in chain:
         res_shortname = residue_constants.restype_3to1.get(res.resname, 'X')
         restype_idx = residue_constants.restype_order.get(
             res_shortname, residue_constants.restype_num)
+
+        # Initialize arrays for atom positions, mask, and b_factors
         pos = np.zeros((residue_constants.atom_type_num, 3))
         mask = np.zeros((residue_constants.atom_type_num,))
         res_b_factors = np.zeros((residue_constants.atom_type_num,))
+
+        # Record coordinates, mask, and b-factor for each atom
         for atom in res:
             if atom.name not in residue_constants.atom_types:
                 continue
@@ -65,6 +71,8 @@ def process_chain(chain: Chain, chain_id: str) -> Protein:
             mask[residue_constants.atom_order[atom.name]] = 1.
             res_b_factors[residue_constants.atom_order[atom.name]
                           ] = atom.bfactor
+
+        # Append data for each residue
         aatype.append(restype_idx)
         atom_positions.append(pos)
         atom_mask.append(mask)
@@ -72,6 +80,7 @@ def process_chain(chain: Chain, chain_id: str) -> Protein:
         b_factors.append(res_b_factors)
         chain_ids.append(chain_id)
 
+    # Create a Protein object with the collected data
     return Protein(
         atom_positions=np.array(atom_positions),
         atom_mask=np.array(atom_mask),

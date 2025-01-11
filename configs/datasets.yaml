@@ -11,7 +11,7 @@ shared:
 
 scope_dataset:
   seed: ${shared.seed}
-  csv_path: ./metadata/scope_metadata.csv
+  csv_path: ./metadata/metadata.csv
   max_cache_size: ${shared.max_cache_size}
   cache_num_res: 0
   add_plddt_mask: False
@@ -34,14 +34,14 @@ scope_dataset:
 
 pdb_dataset:
   seed: ${shared.seed}
-  csv_path: ./metadata/pdb_metadata.csv
+  csv_path: ./metadata/metadata.csv
   cluster_path: ./metadata/pdb.clusters
   max_cache_size: ${shared.max_cache_size}
   cache_num_res: 0
   inpainting_percent: 1.0
 
   add_plddt_mask: False
-  max_eval_length: ${shared.max_eval_length}
+  max_eval_length: 512
 
   # Eval parameters
   samples_per_eval_length: ${shared.samples_per_eval_length}
